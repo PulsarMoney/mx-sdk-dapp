@@ -1,16 +1,18 @@
 import React from 'react';
 import { expect } from '@storybook/jest';
-import { waitFor, fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import { rest } from 'msw';
 import {
   mockWindowLocation,
   renderWithProvider,
-  testNetwork,
-  server
+  server,
+  testAddress,
+  testNetwork
 } from '__mocks__';
 import { logoutAction } from 'reduxStore/commonActions';
 import * as actions from 'reduxStore/slices/loginInfoSlice';
 import { store } from 'reduxStore/store';
+import { sleep } from 'utils/asyncActions';
 import { ExtensionLoginButton } from '../';
 import { checkIsLoggedInStore } from './helpers';
 
@@ -24,13 +26,27 @@ jest.mock('@multiversx/sdk-extension-provider', () => {
 
 const CALLBACK_ROUTE = '/dashboard';
 
-const tokenLogin = {
+const tokenLoginWithoutSignature = {
   loginToken:
-    'bG9jYWxob3N0.fff67d31476ad920d53093a3a4c2178e198179b35656eeefa419107fa718b780.86400.eyJ0aW1lc3RhbXAiOjE2NzEyMDQ3Njh9',
+    'aHR0cDovL2xvY2FsaG9zdA.fff67d31476ad920d53093a3a4c2178e198179b35656eeefa419107fa718b780.86400.eyJ0aW1lc3RhbXAiOjE2OTAxODQzMTN9',
+  nativeAuthConfig: {
+    apiAddress: 'https://devnet-api.multiversx.com',
+    blockHashShard: undefined,
+    expirySeconds: 86400,
+    extraInfo: {},
+    extraRequestHeaders: {},
+    gatewayUrl: undefined,
+    origin: 'http://localhost',
+    tokenExpirationToastWarningSeconds: 300
+  }
+};
+
+const tokenLoginWithSignature = {
+  ...tokenLoginWithoutSignature,
   signature:
     'e4c98dd01020118b13db9dd5db9e5b56ff0c4a0141306918a9d3eea964a21ada5d566f58cdf6c921ed3405bf5685d1e87545dbcc86ea3c27a43aa3abee8c2b0e',
   nativeAuthToken:
-    'ZXJkMWRtOXV4cGY1YXdrbjd1aGp1N3pqbjlsZGUwZGhhaHkwcWF4cXFsdTI2eGN1dXcyN3FxcnNxZm1lajM.Ykc5allXeG9iM04wLmZmZjY3ZDMxNDc2YWQ5MjBkNTMwOTNhM2E0YzIxNzhlMTk4MTc5YjM1NjU2ZWVlZmE0MTkxMDdmYTcxOGI3ODAuODY0MDAuZXlKMGFXMWxjM1JoYlhBaU9qRTJOekV5TURRM05qaDk.e4c98dd01020118b13db9dd5db9e5b56ff0c4a0141306918a9d3eea964a21ada5d566f58cdf6c921ed3405bf5685d1e87545dbcc86ea3c27a43aa3abee8c2b0e'
+    'ZXJkMWRtOXV4cGY1YXdrbjd1aGp1N3pqbjlsZGUwZGhhaHkwcWF4cXFsdTI2eGN1dXcyN3FxcnNxZm1lajM.YUhSMGNEb3ZMMnh2WTJGc2FHOXpkQS5mZmY2N2QzMTQ3NmFkOTIwZDUzMDkzYTNhNGMyMTc4ZTE5ODE3OWIzNTY1NmVlZWZhNDE5MTA3ZmE3MThiNzgwLjg2NDAwLmV5SjBhVzFsYzNSaGJYQWlPakUyT1RBeE9EUXpNVE45.e4c98dd01020118b13db9dd5db9e5b56ff0c4a0141306918a9d3eea964a21ada5d566f58cdf6c921ed3405bf5685d1e87545dbcc86ea3c27a43aa3abee8c2b0e'
 };
 
 describe('ExtensionLoginButton tests', () => {
@@ -50,10 +66,29 @@ describe('ExtensionLoginButton tests', () => {
 
     await checkIsLoggedInStore();
 
-    waitFor(() => {
-      expect(window.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
     });
   });
+
+  it('should perform login and redirect to URL', async () => {
+    const methods = renderWithProvider({
+      children: <ExtensionLoginButton callbackRoute='https://multivers.com' />
+    });
+
+    const loginButton = await methods.findByTestId('extensionLoginButton');
+
+    fireEvent.click(loginButton);
+
+    await checkIsLoggedInStore();
+
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledWith(
+        'https://multivers.com'
+      );
+    });
+  });
+
   it('should perform simple login and call onLoginRedirect', async () => {
     const onLoginRedirect = jest.fn();
 
@@ -72,9 +107,13 @@ describe('ExtensionLoginButton tests', () => {
 
     await checkIsLoggedInStore();
 
-    waitFor(() => {
-      expect(window.location.assign).toHaveBeenCalledTimes(0);
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledTimes(0);
       expect(onLoginRedirect).toHaveBeenCalledTimes(1);
+      expect(onLoginRedirect).toHaveBeenCalledWith(CALLBACK_ROUTE, {
+        address: testAddress,
+        signature: undefined
+      });
     });
   });
 
@@ -86,15 +125,26 @@ describe('ExtensionLoginButton tests', () => {
     });
 
     const loginButton = await methods.findByTestId('extensionLoginButton');
-    const consoleWarnSpy = jest.spyOn(actions, 'setTokenLogin');
-
+    const setTokenLoginSpy = jest.spyOn(actions, 'setTokenLogin');
+    jest.spyOn(Date, 'now').mockReturnValue(1690184313013); // 2023-07-24T11:00
     fireEvent.click(loginButton);
+    await sleep(1000);
 
-    waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith(tokenLogin);
-      expect(window.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
+    await waitFor(() => {
+      expect(setTokenLoginSpy).toHaveBeenNthCalledWith(
+        1,
+        tokenLoginWithoutSignature
+      );
+
+      expect(setTokenLoginSpy).toHaveBeenNthCalledWith(
+        2,
+        tokenLoginWithSignature
+      );
+
+      expect(window?.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
     });
   });
+
   it('should not perform nativeAuth login when block call fails', async () => {
     const blocksError = [
       rest.get(`${testNetwork.apiAddress}/blocks`, (_req, res, ctx) =>
@@ -111,12 +161,10 @@ describe('ExtensionLoginButton tests', () => {
 
     const loginButton = await methods.findByTestId('extensionLoginButton');
 
-    const consoleWarnSpy = jest.spyOn(console, 'warn');
-
     fireEvent.click(loginButton);
 
-    waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith('Login cancelled.');
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledTimes(0);
     });
   });
 });

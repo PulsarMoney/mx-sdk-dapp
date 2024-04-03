@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useGetAccount } from 'hooks/account/useGetAccount';
 import { useDispatch } from 'reduxStore/DappProviderContext';
-import { setWebsocketEvent } from 'reduxStore/slices';
+import { setWebsocketBatchEvent, setWebsocketEvent } from 'reduxStore/slices';
+import { BatchTransactionsWSResponseType } from 'types';
 import { retryMultipleTimes } from 'utils/retryMultipleTimes';
 import { getWebsocketUrl } from 'utils/websocket/getWebsocketUrl';
 import { useGetNetworkConfig } from '../useGetNetworkConfig';
@@ -15,9 +16,13 @@ const TIMEOUT = 3000;
 const RECONNECTION_ATTEMPTS = 3;
 const RETRY_INTERVAL = 500;
 const MESSAGE_DELAY = 1000;
+const BATCH_UPDATED_EVENT = 'batchUpdated';
+const CONNECT = 'connect';
+const DISCONNECT = 'disconnect';
 
 export function useInitializeWebsocketConnection() {
-  const timeout = useRef<NodeJS.Timeout | null>(null);
+  const messageTimeout = useRef<NodeJS.Timeout | null>(null);
+  const batchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const { address } = useGetAccount();
 
@@ -26,11 +31,20 @@ export function useInitializeWebsocketConnection() {
   const { network } = useGetNetworkConfig();
 
   const handleMessageReceived = (message: string) => {
-    if (timeout.current) {
-      clearTimeout(timeout.current);
+    if (messageTimeout.current) {
+      clearTimeout(messageTimeout.current);
     }
-    timeout.current = setTimeout(() => {
+    messageTimeout.current = setTimeout(() => {
       dispatch(setWebsocketEvent(message));
+    }, MESSAGE_DELAY);
+  };
+
+  const handleBatchUpdate = (data: BatchTransactionsWSResponseType) => {
+    if (batchTimeout.current) {
+      clearTimeout(batchTimeout.current);
+    }
+    batchTimeout.current = setTimeout(() => {
+      dispatch(setWebsocketBatchEvent(data));
     }, MESSAGE_DELAY);
   };
 
@@ -59,8 +73,20 @@ export function useInitializeWebsocketConnection() {
 
         websocketConnection.status = WebsocketConnectionStatusEnum.COMPLETED;
 
-        websocketConnection.current.onAny((message) => {
-          handleMessageReceived(message);
+        websocketConnection.current.onAny(handleMessageReceived);
+
+        websocketConnection.current.on(BATCH_UPDATED_EVENT, handleBatchUpdate);
+
+        websocketConnection.current.on(CONNECT, () => {
+          console.log('Websocket connected.');
+        });
+
+        websocketConnection.current.on(DISCONNECT, () => {
+          console.warn('Websocket disconnected. Trying to reconnect...');
+          setTimeout(() => {
+            console.log('Websocket reconnecting...');
+            websocketConnection.current?.connect();
+          }, RETRY_INTERVAL);
         });
       },
       {
@@ -76,17 +102,19 @@ export function useInitializeWebsocketConnection() {
       address &&
       websocketConnection.status ===
         WebsocketConnectionStatusEnum.NOT_INITIALIZED &&
-      !websocketConnection.current
+      !websocketConnection.current?.active
     ) {
       initializeWebsocketConnection();
     }
-  }, [address, websocketConnection.current]);
+  }, [address, initializeWebsocketConnection]);
 
   useEffect(() => {
     return () => {
       websocketConnection.current?.close();
-      if (timeout.current) {
-        clearTimeout(timeout.current);
+      websocketConnection.status =
+        WebsocketConnectionStatusEnum.NOT_INITIALIZED;
+      if (messageTimeout.current) {
+        clearTimeout(messageTimeout.current);
       }
     };
   }, []);

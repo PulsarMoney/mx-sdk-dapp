@@ -50,8 +50,8 @@ describe.skip('OperaLoginButton tests', () => {
 
     await checkIsLoggedInStore();
 
-    waitFor(() => {
-      expect(window.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
     });
   });
   it('should perform simple login and call onLoginRedirect', async () => {
@@ -72,8 +72,8 @@ describe.skip('OperaLoginButton tests', () => {
 
     await checkIsLoggedInStore();
 
-    waitFor(() => {
-      expect(window.location.assign).toHaveBeenCalledTimes(0);
+    await waitFor(() => {
+      expect(window?.location.assign).toHaveBeenCalledTimes(0);
       expect(onLoginRedirect).toHaveBeenCalledTimes(1);
     });
   });
@@ -90,9 +90,9 @@ describe.skip('OperaLoginButton tests', () => {
 
     fireEvent.click(loginButton);
 
-    waitFor(() => {
+    await waitFor(() => {
       expect(consoleWarnSpy).toHaveBeenCalledWith(tokenLogin);
-      expect(window.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
+      expect(window?.location.assign).toHaveBeenCalledWith(CALLBACK_ROUTE);
     });
   });
   it('should not perform nativeAuth login when block call fails', async () => {
@@ -115,7 +115,7 @@ describe.skip('OperaLoginButton tests', () => {
 
     fireEvent.click(loginButton);
 
-    waitFor(() => {
+    await waitFor(() => {
       expect(consoleWarnSpy).toHaveBeenCalledWith('Login cancelled.');
     });
   });

@@ -6,7 +6,8 @@ import { networkSelector, tokenLoginSelector } from 'reduxStore/selectors';
 import { setTokenLogin } from 'reduxStore/slices';
 import { nativeAuth } from 'services/nativeAuth';
 import { getNativeAuthConfig } from 'services/nativeAuth/methods';
-import { OnProviderLoginType } from 'types';
+import { NativeAuthConfigType, OnProviderLoginType } from 'types';
+import Cookies from 'js-cookie';
 
 const getApiAddress = (
   apiAddress: string,
@@ -43,16 +44,16 @@ export const useLoginService = (config?: OnProviderLoginType['nativeAuth']) => {
     tokenRef.current = loginToken;
     dispatch(
       setTokenLogin({
+        ...tokenLogin,
         loginToken,
         ...(apiAddress ? { nativeAuthConfig: configuration } : {})
       })
     );
   };
 
-  const getNativeAuthLoginToken = async () => {
+  const getNativeAuthLoginToken = () => {
     try {
-      const loginToken = await client.initialize();
-      return loginToken;
+      return client.initialize();
     } catch (error) {
       console.error('Unable to get block. Login failed.', error);
       return;
@@ -88,39 +89,53 @@ export const useLoginService = (config?: OnProviderLoginType['nativeAuth']) => {
       signature
     });
 
+    Cookies.set('Authorization', nativeAuthToken);
+
     dispatch(
       setTokenLogin({
-        loginToken: loginToken,
+        loginToken,
         signature,
         nativeAuthToken,
         ...(apiAddress ? { nativeAuthConfig: configuration } : {})
       })
     );
+    return nativeAuthToken;
   };
 
   // TODO: @StanislavSava verify and maybe refactor to separate function
   const refreshNativeAuthTokenLogin = async ({
-    signMessageCallback
+    signMessageCallback,
+    nativeAuthClientConfig
   }: {
     signMessageCallback: (
       messageToSign: SignableMessage,
       options: Record<any, any>
     ) => Promise<SignableMessage>;
+    nativeAuthClientConfig?: NativeAuthConfigType;
   }) => {
-    const loginToken = await getNativeAuthLoginToken();
+    const nativeAuthClient = nativeAuth(
+      nativeAuthClientConfig || configuration
+    );
+
+    const loginToken = await nativeAuthClient.initialize({
+      noCache: Boolean(nativeAuthClientConfig)
+    });
+
     tokenRef.current = loginToken;
     if (!loginToken) {
       return;
     }
     const messageToSign = new SignableMessage({
       address: new Address(address),
-      message: Buffer.from(loginToken)
+      message: Buffer.from(`${address}${loginToken}`)
     });
-    const signature = await signMessageCallback(messageToSign, {});
-    setTokenLoginInfo({
+    const signedMessage = await signMessageCallback(messageToSign, {});
+    const nativeAuthToken = setTokenLoginInfo({
       address,
-      signature: (signature.toJSON() as any).signature
+      signature: signedMessage.getSignature().toString('hex')
     });
+
+    return nativeAuthToken;
   };
 
   return {

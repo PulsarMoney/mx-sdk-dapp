@@ -13,6 +13,8 @@ import {
 import { LoginMethodsEnum } from 'types/enums.types';
 import { getIsLoggedIn } from 'utils/getIsLoggedIn';
 import { optionalRedirect } from 'utils/internal';
+import { addOriginToLocationPath } from 'utils/window';
+import { getDefaultCallbackUrl } from 'utils/window';
 import { useLoginService } from './useLoginService';
 
 export type UseExtensionLoginReturnType = [
@@ -53,10 +55,9 @@ export const useExtensionLogin = ({
         return;
       }
 
+      const defaultCallbackUrl = getDefaultCallbackUrl();
       const callbackUrl: string = encodeURIComponent(
-        `${window?.location.origin}${
-          callbackRoute ?? window?.location.pathname
-        }`
+        addOriginToLocationPath(callbackRoute ?? defaultCallbackUrl)
       );
 
       if (hasNativeAuth && !token) {
@@ -87,6 +88,7 @@ export const useExtensionLogin = ({
       if (!address) {
         setIsLoading(false);
         console.warn('Login cancelled.');
+        setError('Login cancelled');
         return;
       }
 
@@ -107,7 +109,7 @@ export const useExtensionLogin = ({
         options: { signature, address }
       });
     } catch (error) {
-      console.error('error loging in', error);
+      console.error('error logging in', error);
       // TODO: can be any or typed error
       setError('error logging in' + (error as any).message);
     } finally {

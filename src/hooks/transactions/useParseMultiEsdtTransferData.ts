@@ -95,20 +95,25 @@ export function useParseMultiEsdtTransferData({
             allTxs.push(newTx);
           });
         } else {
-          const { tokenId, amount } = getTokenFromData(
-            transaction.getData().toString()
-          );
+          const transactionData = transaction.getData().toString();
+
+          const { tokenId, amount } = getTokenFromData(transactionData);
 
           if (tokenId) {
-            addTransactionDataToParsedInfo(transaction.getData().toString(), {
+            addTransactionDataToParsedInfo(transactionData, {
               tokenId,
               amount,
               receiver: transaction.getReceiver().bech32()
             });
           }
-          allTxs.push({ transaction, transactionIndex });
+          allTxs.push({
+            transaction,
+            transactionIndex,
+            multiTxData: transactionData
+          });
         }
       });
+
       setAllTransactions(allTxs);
     }
   }

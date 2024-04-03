@@ -1,33 +1,68 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import classNames from 'classnames';
-
-import styles from './progressBarStyles.scss';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
+import { LedgerAccountType } from 'reduxStore/slices';
 
 export interface LedgerProgressBarPropsType {
-  percentage: number;
+  error?: string;
+  ledgerAccount: LedgerAccountType | null;
   ledgerProgressBarClassNames?: {
     ledgerProgressBarTrackClassName?: string;
     ledgerProgressBarThumbClassName?: string;
   };
+  showAddressList: boolean;
+  showProgressBar?: boolean;
 }
 
-export const LedgerProgressBar = (props: LedgerProgressBarPropsType) => {
-  const { percentage, ledgerProgressBarClassNames } = props;
+const LedgerProgressBarComponent = ({
+  error,
+  ledgerAccount,
+  ledgerProgressBarClassNames,
+  showAddressList,
+  showProgressBar,
+  styles
+}: LedgerProgressBarPropsType & WithStylesImportType) => {
+  const progressStep = [
+    {
+      percentage: 33,
+      conditions: !showAddressList && !ledgerAccount
+    },
+    {
+      conditions: showAddressList && !error && !ledgerAccount,
+      percentage: 66
+    },
+    {
+      conditions: ledgerAccount != null && !error,
+      percentage: 100
+    }
+  ];
+
+  const currentProgress = useMemo(
+    () => progressStep.find((step) => step.conditions),
+    []
+  );
+
+  const percentage = currentProgress ? currentProgress.percentage : 33;
+
+  if (!showProgressBar) {
+    return null;
+  }
+
   const { ledgerProgressBarTrackClassName, ledgerProgressBarThumbClassName } =
     ledgerProgressBarClassNames || {};
 
   return (
-    <div className={styles.ledgerProgressBar}>
+    <div className={styles?.ledgerProgressBar}>
       <div
         className={classNames(
-          styles.ledgerProgressBarTrack,
+          styles?.ledgerProgressBarTrack,
           ledgerProgressBarTrackClassName
         )}
       />
 
       <div
         className={classNames(
-          styles.ledgerProgressBarThumb,
+          styles?.ledgerProgressBarThumb,
           ledgerProgressBarThumbClassName
         )}
         style={{ width: `${percentage}%` }}
@@ -35,3 +70,13 @@ export const LedgerProgressBar = (props: LedgerProgressBarPropsType) => {
     </div>
   );
 };
+
+export const LedgerProgressBar = withStyles(LedgerProgressBarComponent, {
+  ssrStyles: () =>
+    import(
+      'UI/ledger/LedgerLoginContainer/LedgerProgressBar/progressBarStyles.scss'
+    ),
+  clientStyles: () =>
+    require('UI/ledger/LedgerLoginContainer/LedgerProgressBar/progressBarStyles.scss')
+      .default
+});

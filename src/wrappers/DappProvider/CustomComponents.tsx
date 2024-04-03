@@ -1,13 +1,9 @@
 import React from 'react';
 import { LogoutListener } from 'components/LogoutListener';
-import {
-  TransactionSender,
-  TransactionSenderType
-} from 'components/TransactionSender';
-import {
-  TransactionsTracker,
-  TransactionsTrackerType
-} from 'components/TransactionsTracker';
+import { TransactionSender } from 'components/TransactionSender';
+import { TransactionSenderType } from 'components/TransactionSender/types/transactionSender.types';
+import { TransactionsTracker } from 'components/TransactionsTracker';
+import { TransactionsTrackerType } from 'types/transactionsTracker.types';
 
 export interface CustomComponentsType {
   transactionSender?: {
@@ -15,7 +11,7 @@ export interface CustomComponentsType {
     props?: TransactionSenderType;
   };
   transactionTracker?: {
-    component: typeof TransactionsTracker;
+    component?: typeof TransactionsTracker;
     props?: TransactionsTrackerType;
   };
 }
@@ -35,6 +31,7 @@ export function CustomComponents({
     <>
       <TxSender {...transactionSender?.props} />
       <TxTracker {...transactionTracker?.props} />
+
       <LogoutListener />
     </>
   );

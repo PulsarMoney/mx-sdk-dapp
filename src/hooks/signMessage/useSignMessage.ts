@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SignableMessage, Address } from '@multiversx/sdk-core';
 import {
   CANCELLED,
   ERROR_SIGNING,
@@ -6,11 +7,15 @@ import {
 } from 'constants/index';
 import { useGetAccountProvider } from 'hooks/account/useGetAccountProvider';
 import { useDispatch, useSelector } from 'reduxStore/DappProviderContext';
-import { signedMessageInfoSliceSelector } from 'reduxStore/selectors';
+import {
+  lastSignedSessionId,
+  signedMessageInfoSliceSelector
+} from 'reduxStore/selectors';
 import {
   clearSignedMessageInfo,
   setSignSession,
-  setSignSessionState
+  setSignSessionState,
+  setSignTransactionsCancelMessage
 } from 'reduxStore/slices';
 import {
   LoginMethodsEnum,
@@ -22,6 +27,13 @@ import {
   SignMessageType
 } from 'utils/account/signMessage';
 import { parseNavigationParams } from 'utils/parseNavigationParams';
+import { getWindowLocation } from 'utils/window/getWindowLocation';
+import {
+  addOriginToLocationPath,
+  getAccountProvider,
+  getAddress,
+  removeSearchParamsFromUrl
+} from '../../utils';
 import { useGetSignMessageInfoStatus } from './useGetSignedMessageStatus';
 
 export interface CancelPropsType {
@@ -46,13 +58,17 @@ export const useSignMessage = () => {
   const signedMessageInfo = useSelector(signedMessageInfoSliceSelector);
   const currentSession = signedMessageInfo.signedSessions[currentSessionId];
   const { isPending, errorMessage } = useGetSignMessageInfoStatus();
-  const search = window?.location.search;
+  const { search, origin } = getWindowLocation();
   const { provider, providerType } = useGetAccountProvider();
   const isWalletLogin = providerType === LoginMethodsEnum.wallet;
+  const lastSignSession = useSelector(lastSignedSessionId);
 
   // Clears the state
   const onAbort = () => {
     dispatch(clearSignedMessageInfo());
+    return removeSearchParamsFromUrl({
+      removeParams: Object.keys(SignedMessageQueryParamsEnum)
+    });
   };
 
   // Cancel signing
@@ -79,6 +95,7 @@ export const useSignMessage = () => {
         }
       })
     );
+    dispatch(setSignTransactionsCancelMessage(errorMessage));
   };
 
   const checkCallbackSessionId = (
@@ -89,9 +106,9 @@ export const useSignMessage = () => {
       return '';
     }
 
-    // Make sure callbackURL has sessionId
-    const callbackUrl = new URL(callbackRoute);
+    const callbackUrl = new URL(addOriginToLocationPath(callbackRoute));
 
+    // Make sure callbackURL has sessionId
     if (!callbackUrl.searchParams.get(SignedMessageQueryParamsEnum.sessionId)) {
       callbackUrl.searchParams.append(
         SignedMessageQueryParamsEnum.sessionId,
@@ -99,9 +116,9 @@ export const useSignMessage = () => {
       );
     }
 
-    return `${isWalletLogin ? window?.location.origin : ''}${
-      callbackUrl.pathname
-    }${callbackUrl.search}`;
+    return `${isWalletLogin ? origin : ''}${callbackUrl.pathname}${
+      callbackUrl.search
+    }${callbackUrl.hash}`;
   };
 
   const checkProviderIsInitialized = async () => {
@@ -113,7 +130,7 @@ export const useSignMessage = () => {
       const isProviderInitialized = await provider?.init?.();
 
       if (!isProviderInitialized) {
-        throw Error(PROVIDER_NOT_INITIALIZED);
+        return;
       }
     } catch (error) {
       const errorMessage =
@@ -121,13 +138,24 @@ export const useSignMessage = () => {
         (error as string) ||
         PROVIDER_NOT_INITIALIZED;
 
-      throw Error(errorMessage);
+      console.error(errorMessage);
     }
   };
 
-  const signMessageWithWallet = (props: SignMessageType) => {
-    return provider.signMessage(props.message as any, {
-      callbackUrl: encodeURIComponent(String(props.callbackRoute))
+  const signMessageWithWallet = async ({
+    message,
+    callbackRoute
+  }: SignMessageType) => {
+    const address = await getAddress();
+    const provider = getAccountProvider();
+    const callbackUrl = encodeURIComponent(String(callbackRoute));
+    const signableMessage = new SignableMessage({
+      address: new Address(address),
+      message: Buffer.from(message, 'ascii')
+    });
+
+    return provider.signMessage(signableMessage, {
+      callbackUrl
     });
   };
 
@@ -161,10 +189,12 @@ export const useSignMessage = () => {
     try {
       await checkProviderIsInitialized();
     } catch (error) {
-      return onCancel({
+      onCancel({
         errorMessage: String(error),
         callbackRoute
       });
+
+      return null;
     }
 
     try {
@@ -173,21 +203,23 @@ export const useSignMessage = () => {
         callbackRoute
       });
 
-      if (signedMessage.signature) {
-        return dispatch(
+      if (signedMessage?.signature) {
+        dispatch(
           setSignSession({
             sessionId,
             signedSession: {
               status: SignedMessageStatusesEnum.signed,
               callbackUrl: callbackRoute,
               message: props.message,
-              signature: signedMessage.signature.hex()
+              signature: signedMessage.signature.toString('hex')
             }
           })
         );
+
+        return signedMessage;
       }
 
-      return onCancel({
+      onCancel({
         errorMessage: CANCELLED,
         callbackRoute
       });
@@ -195,11 +227,13 @@ export const useSignMessage = () => {
       const errorMessage =
         (error as Error)?.message || (error as string) || ERROR_SIGNING;
 
-      return onCancel({
+      onCancel({
         errorMessage,
         callbackRoute
       });
     }
+
+    return null;
   };
 
   /**
@@ -207,7 +241,7 @@ export const useSignMessage = () => {
    * 1. Parse query params on hook redirect from dapp to web wallet
    * 2. Parse query params on hook reply back to dapp from web wallet
    */
-  const parseSingnedMessageFromUrl = () => {
+  const parseSignedMessageFromUrl = () => {
     if (search) {
       const {
         remainingParams: { signature, sessionId, status },
@@ -227,7 +261,7 @@ export const useSignMessage = () => {
         ].includes(status as SignedMessageStatusesEnum)
       ) {
         // Failed to sign message
-        return onCancel({
+        onCancel({
           errorMessage:
             status === SignedMessageStatusesEnum.cancelled
               ? CANCELLED
@@ -237,9 +271,9 @@ export const useSignMessage = () => {
 
       if (signature && status === SignedMessageStatusesEnum.signed) {
         // Message was signed successfully
-        return dispatch(
+        dispatch(
           setSignSession({
-            sessionId: currentSessionId,
+            sessionId,
             signedSession: {
               signature,
               status
@@ -254,7 +288,7 @@ export const useSignMessage = () => {
 
   // Parse the signed message info from URL (after callback was triggered from provider)
   useEffect(() => {
-    parseSingnedMessageFromUrl();
+    parseSignedMessageFromUrl();
   }, [search]);
 
   // Reply to the dapp when message was signed, cancel, or failed
@@ -276,6 +310,6 @@ export const useSignMessage = () => {
     onAbort,
     onCancel,
     signMessage,
-    sessionId: currentSessionId
+    sessionId: currentSessionId || lastSignSession
   };
 };

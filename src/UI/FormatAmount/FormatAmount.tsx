@@ -1,31 +1,48 @@
 import React from 'react';
 import classNames from 'classnames';
-import globalStyles from 'assets/sass/main.scss';
-import { DECIMALS, DIGITS, MAINNET_EGLD_LABEL, ZERO } from 'constants/index';
+import {
+  DataTestIdsEnum,
+  DECIMALS,
+  DIGITS,
+  MAINNET_EGLD_LABEL,
+  ZERO
+} from 'constants/index';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
 import { formatAmount } from 'utils/operations/formatAmount';
 import { stringIsInteger } from 'utils/validation/stringIsInteger';
 import { FormatAmountPropsType } from './formatAmount.types';
-import styles from './formatAmountStyles.scss';
 
-const formatAmountInvalid = (props: FormatAmountPropsType) => {
+const formatAmountInvalid = (
+  props: FormatAmountPropsType & WithStylesImportType
+) => {
+  const styles = props.styles ?? {};
+
   return (
     <span
       data-testid={
-        props['data-testid'] ? props['data-testid'] : 'formatAmountComponent'
+        props['data-testid'] || DataTestIdsEnum.formatAmountComponent
       }
       className={props.className}
     >
-      <span className={styles['int-amount']} data-testid='formatAmountInt'>
+      <span
+        className={styles['int-amount']}
+        data-testid={DataTestIdsEnum.formatAmountInt}
+      >
         ...
       </span>
     </span>
   );
 };
 
-const formatAmountValid = (props: FormatAmountPropsType, erdLabel: string) => {
+const formatAmountValid = (
+  props: FormatAmountPropsType & WithStylesImportType,
+  erdLabel: string
+) => {
   const { value, showLastNonZeroDecimal = false, showLabel = true } = props;
   const digits = props.digits != null ? props.digits : DIGITS;
   const decimals = props.decimals != null ? props.decimals : DECIMALS;
+  const styles = props.styles ?? {};
+  const globalStyles = props.globalStyles ?? {};
 
   const formattedValue = formatAmount({
     input: value,
@@ -55,15 +72,21 @@ const formatAmountValid = (props: FormatAmountPropsType, erdLabel: string) => {
   return (
     <span
       data-testid={
-        props['data-testid'] ? props['data-testid'] : 'formatAmountComponent'
+        props['data-testid'] || DataTestIdsEnum.formatAmountComponent
       }
       className={props.className}
     >
-      <span className={styles['int-amount']} data-testid='formatAmountInt'>
+      <span
+        className={styles['int-amount']}
+        data-testid={DataTestIdsEnum.formatAmountInt}
+      >
         {valueParts[0]}
       </span>
       {valueParts.length > 1 && (
-        <span className={styles.decimals} data-testid='formatAmountDecimals'>
+        <span
+          className={styles.decimals}
+          data-testid={DataTestIdsEnum.formatAmountDecimals}
+        >
           .{valueParts[1]}
         </span>
       )}
@@ -73,7 +96,7 @@ const formatAmountValid = (props: FormatAmountPropsType, erdLabel: string) => {
             styles.symbol,
             props.token && globalStyles.textMuted
           )}
-          data-testid='formatAmountSymbol'
+          data-testid={DataTestIdsEnum.formatAmountSymbol}
         >
           {` ${props.token ?? erdLabel}`}
         </span>
@@ -82,7 +105,9 @@ const formatAmountValid = (props: FormatAmountPropsType, erdLabel: string) => {
   );
 };
 
-const FormatAmountComponent = (props: FormatAmountPropsType) => {
+const FormatAmountComponent = (
+  props: FormatAmountPropsType & WithStylesImportType
+) => {
   const { value } = props;
 
   return !stringIsInteger(value)
@@ -93,10 +118,17 @@ const FormatAmountComponent = (props: FormatAmountPropsType) => {
 /**
  * @param props.egldLabel  if not provided, will fallback on **EGLD**
  */
-export const FormatAmount = (props: FormatAmountPropsType) => {
+const FormatAmountWrapper = (
+  props: FormatAmountPropsType & WithStylesImportType
+) => {
   const egldLabel = props.egldLabel || MAINNET_EGLD_LABEL;
 
   const formatAmountProps = { ...props, egldLabel };
 
   return <FormatAmountComponent {...formatAmountProps} />;
 };
+
+export const FormatAmount = withStyles(FormatAmountWrapper, {
+  ssrStyles: () => import('UI/FormatAmount/formatAmountStyles.scss'),
+  clientStyles: () => require('UI/FormatAmount/formatAmountStyles.scss').default
+});

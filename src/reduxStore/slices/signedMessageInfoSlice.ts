@@ -50,14 +50,16 @@ export const signedMessageInfoSlice = createSlice({
     ) => {
       const { sessionId, signedSession, errorMessage } = action.payload;
 
-      return {
-        ...state,
-        errorMessage: errorMessage ?? state.errorMessage,
-        isSigning: signedSession.status === SignedMessageStatusesEnum.pending,
-        signedSessions: {
-          ...state.signedSessions,
-          [sessionId]: signedSession
-        }
+      if (errorMessage) {
+        state.errorMessage = errorMessage;
+      }
+
+      state.isSigning =
+        signedSession.status === SignedMessageStatusesEnum.pending;
+
+      state.signedSessions[sessionId] = {
+        ...state.signedSessions[sessionId],
+        ...signedSession
       };
     },
     setSignSessionState: (

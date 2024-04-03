@@ -2,11 +2,29 @@ import { getAccountProvider, getProviderType } from 'providers';
 import { logoutAction } from 'reduxStore/commonActions';
 import { store } from 'reduxStore/store';
 import { LoginMethodsEnum } from 'types';
-import { getIsLoggedIn } from 'utils/getIsLoggedIn';
-import { getAddress } from './account';
+import { matchPath } from '../wrappers/AuthenticatedRoutesWrapper/helpers/matchPath';
+import { getAddress, getWebviewToken } from './account';
 import { preventRedirects, safeRedirect } from './redirect';
 import { storage } from './storage';
 import { localStorageKeys } from './storage/local';
+import { addOriginToLocationPath, getWindowLocation } from './window';
+import Cookies from 'js-cookie';
+
+interface RedirectToCallbackUrlParamsType {
+  callbackUrl?: string;
+  onRedirect?: (callbackUrl?: string) => void;
+}
+
+const redirectToCallbackUrl = ({
+  callbackUrl,
+  onRedirect
+}: RedirectToCallbackUrlParamsType) => {
+  if (typeof onRedirect === 'function') {
+    onRedirect(callbackUrl);
+  } else if (callbackUrl) {
+    safeRedirect({ url: callbackUrl });
+  }
+};
 
 const broadcastLogoutAcrossTabs = (address: string) => {
   const storedData = storage.local.getItem(localStorageKeys.logoutEvent);
@@ -21,70 +39,74 @@ const broadcastLogoutAcrossTabs = (address: string) => {
     data: address,
     expires: 0
   });
+
   storage.local.removeItem(localStorageKeys.logoutEvent);
 };
+
+const CLEAR_SESSION_TIMEOUT_MS = 500;
 
 export async function logout(
   callbackUrl?: string,
   onRedirect?: (callbackUrl?: string) => void,
-  shouldAttemptRelogin = true
+  shouldAttemptReLogin = Boolean(getWebviewToken())
 ) {
+  let address = '';
   const provider = getAccountProvider();
   const providerType = getProviderType(provider);
-  const isLoggedIn = getIsLoggedIn();
   const isWalletProvider = providerType === LoginMethodsEnum.wallet;
+  const isProviderInitialised = provider?.isInitialized?.() === true;
 
-  if (shouldAttemptRelogin && provider?.relogin != null) {
-    return await provider.relogin();
-  }
-
-  if (!isLoggedIn || !provider) {
-    redirectToCallbackUrl(callbackUrl, onRedirect, false);
-    return;
+  if (shouldAttemptReLogin && provider?.relogin != null) {
+    return provider.relogin();
   }
 
   try {
-    const address = await getAddress();
+    address = await getAddress();
     broadcastLogoutAcrossTabs(address);
   } catch (err) {
-    redirectToCallbackUrl(callbackUrl, onRedirect, false);
     console.error('error fetching logout address', err);
   }
 
-  if (isWalletProvider) {
+  const url = addOriginToLocationPath(callbackUrl);
+  const location = getWindowLocation();
+  const callbackPathname = new URL(url).pathname;
+
+  // Prevent page redirect if the logout callbackURL is equal to the current URL
+  // or if is wallet provider
+  if (
+    matchPath(location.pathname, callbackPathname) ||
+    (isWalletProvider && isProviderInitialised)
+  ) {
     preventRedirects();
   }
 
+  // We are already logged out, so we can redirect to the dapp
+  if (!address && !isProviderInitialised) {
+    return redirectToCallbackUrl({
+      callbackUrl: url,
+      onRedirect
+    });
+  }
   store.dispatch(logoutAction());
+  Cookies.remove('Authorization');
 
   try {
-    const needsCallbackUrl = isWalletProvider && !callbackUrl;
-    const url = needsCallbackUrl ? window?.location.origin : callbackUrl;
+    store.dispatch(logoutAction());
 
     if (isWalletProvider) {
-      // allow Redux clearing it's state before navigation
-      setTimeout(() => {
+      // Allow redux store cleanup before redirect to web wallet
+      return setTimeout(() => {
         provider.logout({ callbackUrl: url });
-      });
-    } else {
-      await provider.logout({ callbackUrl: url });
-      redirectToCallbackUrl(callbackUrl, onRedirect, isWalletProvider);
+      }, CLEAR_SESSION_TIMEOUT_MS);
     }
+
+    await provider.logout({ callbackUrl: url });
   } catch (err) {
     console.error('error logging out', err);
-  }
-}
-
-function redirectToCallbackUrl(
-  callbackUrl?: string,
-  onRedirect?: (callbackUrl?: string) => void,
-  isWalletProvider?: boolean
-) {
-  if (callbackUrl && !isWalletProvider) {
-    if (typeof onRedirect === 'function') {
-      onRedirect(callbackUrl);
-    } else {
-      safeRedirect(callbackUrl);
-    }
+  } finally {
+    redirectToCallbackUrl({
+      callbackUrl: url,
+      onRedirect
+    });
   }
 }

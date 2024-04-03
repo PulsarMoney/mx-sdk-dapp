@@ -1,5 +1,6 @@
 import { AssetType, ScamInfoType } from './account.types';
 import { EsdtEnumType, NftEnumType } from './tokens.types';
+import { SignedTransactionType } from './transactions.types';
 
 //#region server trasactions
 export interface ScResultType {
@@ -235,6 +236,7 @@ export interface ServerTransactionType {
   senderShard: number;
   signature: string;
   status: string;
+  inTransit?: boolean;
   timestamp: number;
   value: string;
   price: number;
@@ -309,3 +311,30 @@ export enum DecodeMethodEnum {
 }
 
 //#endregion
+
+export enum BatchTransactionStatus {
+  pending = 'pending',
+  success = 'success',
+  invalid = 'invalid',
+  dropped = 'dropped',
+  fail = 'fail'
+}
+
+export interface BatchTransactionsRequestType {
+  id: string;
+  transactions: SignedTransactionType[][];
+}
+
+export interface BatchTransactionsResponseType {
+  id: string;
+  status: BatchTransactionStatus;
+  transactions: SignedTransactionType[][];
+  error?: string;
+  message?: string;
+  statusCode?: string;
+}
+
+export type BatchTransactionsWSResponseType = {
+  batchId: string;
+  txHashes: string[];
+};

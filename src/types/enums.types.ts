@@ -1,3 +1,9 @@
+import {
+  CrossWindowProviderRequestEnums,
+  CrossWindowProviderResponseEnums
+} from '@multiversx/sdk-web-wallet-cross-window-provider/out/types';
+export { CrossWindowProviderRequestEnums, CrossWindowProviderResponseEnums };
+
 export enum TransactionServerStatusesEnum {
   pending = 'pending',
   fail = 'fail',
@@ -21,7 +27,8 @@ export enum TransactionBatchStatusesEnum {
   success = 'success',
   sent = 'sent',
   fail = 'fail',
-  timedOut = 'timedOut'
+  timedOut = 'timedOut',
+  invalid = 'invalid'
 }
 
 export enum LoginMethodsEnum {
@@ -60,6 +67,7 @@ export enum ToastsEnum {
 export enum TransactionTypesEnum {
   MultiESDTNFTTransfer = 'MultiESDTNFTTransfer',
   ESDTTransfer = 'ESDTTransfer',
+  ESDTNFTBurn = 'ESDTNFTBurn',
   ESDTNFTTransfer = 'ESDTNFTTransfer',
   esdtTransaction = 'esdtTransaction',
   nftTransaction = 'nftTransaction',
@@ -70,29 +78,32 @@ export enum TransactionsDefaultTitles {
   success = 'Transaction successful',
   failed = 'Transaction failed',
   pending = 'Processing transaction',
-  timedOut = 'Transaction timed out'
+  timedOut = 'Transaction timed out',
+  // Appears in batch transactions when the batch status is invalid (set the batch status to invalid for each transaction)
+  invalid = 'Transaction invalid'
 }
 
-export enum DappCoreWCV2CustomMethodsEnum {
-  erd_cancelAction = 'erd_cancelAction',
-  multiversx_cancelAction = 'multiversx_cancelAction'
-}
 export enum PlatformsEnum {
   ios = 'ios',
   reactNative = 'reactNative',
-  web = 'web'
+  web = 'web',
+  webWallet = 'webWallet'
 }
 
-export enum WebViewProviderRequestEnums {
-  signTransactionsRequest = 'SIGN_TRANSACTIONS_REQUEST',
-  signMessageRequest = 'SIGN_MESSAGE_REQUEST',
-  loginRequest = 'LOGIN_REQUEST',
-  logoutRequest = 'LOGOUT_REQUEST',
+export enum WebViewProviderRequestBaseEnums {
+  signTransactionsWithGuardianResponse = 'SIGN_TRANSACTIONS_WITH_GUARDIAN_RESPONSE',
   reloginRequest = 'RELOGIN_REQUEST'
 }
-export enum WebViewProviderResponseEnums {
-  signTransactionsResponse = 'SIGN_TRANSACTIONS_RESPONSE',
-  signMessageResponse = 'SIGN_MESSAGE_RESPONSE',
-  loginResponse = 'LOGIN_RESPONSE',
+export const WebViewProviderRequestEnums = {
+  ...CrossWindowProviderRequestEnums,
+  ...WebViewProviderRequestBaseEnums
+};
+
+export enum WebViewProviderResponseBaseEnums {
   reloginResponse = 'RELOGIN_RESPONSE'
 }
+
+export const WebViewProviderResponseEnums = {
+  ...CrossWindowProviderResponseEnums,
+  ...WebViewProviderResponseBaseEnums
+};

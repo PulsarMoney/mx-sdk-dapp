@@ -2,40 +2,51 @@ import {
   Address,
   Transaction,
   TransactionOptions,
-  TransactionPayload,
   TransactionVersion
 } from '@multiversx/sdk-core';
 import { GAS_LIMIT, GAS_PRICE, VERSION } from 'constants/index';
 import { RawTransactionType } from 'types';
-import { isStringBase64 } from 'utils/decoders/base64Utils';
+import { getDataPayloadForTransaction } from 'utils/transactions/getDataPayloadForTransaction';
+import { isGuardianTx } from 'utils/transactions/isGuardianTx';
 
 export function newTransaction(rawTransaction: RawTransactionType) {
-  const { data } = rawTransaction;
-  const dataPayload = isStringBase64(data ?? '')
-    ? TransactionPayload.fromEncoded(data)
-    : new TransactionPayload(data);
+  const rawTx = Object.assign({}, rawTransaction);
+
+  // TODO: Remove when the protocol supports usernames for guardian transactions
+  if (isGuardianTx({ data: rawTx.data, onlySetGuardian: true })) {
+    delete rawTx.senderUsername;
+    delete rawTx.receiverUsername;
+  }
 
   const transaction = new Transaction({
-    value: rawTransaction.value.valueOf(),
-    data: dataPayload,
-    nonce: rawTransaction.nonce.valueOf(),
-    receiver: new Address(rawTransaction.receiver),
-    sender: new Address(rawTransaction.sender),
-    gasLimit: rawTransaction.gasLimit.valueOf() ?? GAS_LIMIT,
-    gasPrice: rawTransaction.gasPrice.valueOf() ?? GAS_PRICE,
-    chainID: rawTransaction.chainID.valueOf(),
-    version: new TransactionVersion(rawTransaction.version ?? VERSION),
-    ...(rawTransaction.options
-      ? { options: new TransactionOptions(rawTransaction.options) }
-      : {})
+    value: rawTx.value.valueOf(),
+    data: getDataPayloadForTransaction(rawTx.data),
+    nonce: rawTx.nonce.valueOf(),
+    receiver: new Address(rawTx.receiver),
+    ...(rawTx.receiverUsername
+      ? { receiverUsername: rawTx.receiverUsername }
+      : {}),
+    sender: new Address(rawTx.sender),
+    ...(rawTx.senderUsername ? { senderUsername: rawTx.senderUsername } : {}),
+    gasLimit: rawTx.gasLimit.valueOf() ?? GAS_LIMIT,
+    gasPrice: rawTx.gasPrice.valueOf() ?? GAS_PRICE,
+    chainID: rawTx.chainID.valueOf(),
+    version: new TransactionVersion(rawTx.version ?? VERSION),
+    ...(rawTx.options
+      ? { options: new TransactionOptions(rawTx.options) }
+      : {}),
+    ...(rawTx.guardian ? { guardian: new Address(rawTx.guardian) } : {})
   });
 
-  transaction.applySignature(
-    {
-      hex: () => rawTransaction.signature || ''
-    },
-    new Address(rawTransaction.sender)
-  );
+  if (rawTx.guardianSignature) {
+    transaction.applyGuardianSignature(
+      Buffer.from(rawTx.guardianSignature, 'hex')
+    );
+  }
+
+  if (rawTx.signature) {
+    transaction.applySignature(Buffer.from(rawTx.signature, 'hex'));
+  }
 
   return transaction;
 }

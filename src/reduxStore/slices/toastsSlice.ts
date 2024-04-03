@@ -1,25 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { REHYDRATE } from 'redux-persist';
-import { TRANSACTION_STATUS_TOAST_ID } from 'constants/transactionStatus';
 import { ToastsEnum } from 'types';
+import { CustomToastType, TransactionToastType } from 'types/toasts.types';
 import { getUnixTimestamp } from 'utils/dateTime/getUnixTimestamp';
-import {
-  CustomToastType,
-  FailTransactionToastType,
-  TransactionToastType
-} from '../../types/toasts.types';
 import { logoutAction } from '../commonActions';
 
 export interface ToastsSliceState {
   customToasts: CustomToastType[];
   transactionToasts: TransactionToastType[];
-  failTransactionToast: FailTransactionToastType | null;
 }
 
 const initialState: ToastsSliceState = {
   customToasts: [],
-  transactionToasts: [],
-  failTransactionToast: null
+  transactionToasts: []
 };
 
 export const toastsSlice = createSlice({
@@ -30,12 +23,28 @@ export const toastsSlice = createSlice({
       state: ToastsSliceState,
       action: PayloadAction<CustomToastType>
     ) => {
+      const toastId =
+        action.payload.toastId ||
+        `custom-toast-${state.customToasts.length + 1}`;
+
+      const existingToastIndex = state.customToasts.findIndex(
+        (toast) => toast.toastId === toastId
+      );
+
+      if (existingToastIndex !== -1) {
+        state.customToasts[existingToastIndex] = {
+          ...state.customToasts[existingToastIndex],
+          ...action.payload,
+          type: ToastsEnum.custom,
+          toastId
+        } as CustomToastType;
+        return;
+      }
+
       state.customToasts.push({
         ...action.payload,
         type: ToastsEnum.custom,
-        toastId:
-          action.payload.toastId ||
-          `custom-toast-${state.customToasts.length + 1}`
+        toastId
       });
     },
 
@@ -66,18 +75,6 @@ export const toastsSlice = createSlice({
       state.transactionToasts = state.transactionToasts.filter((toast) => {
         return toast.toastId !== action.payload;
       });
-    },
-    addFailTransactionToast: (
-      state: ToastsSliceState,
-      action: PayloadAction<FailTransactionToastType>
-    ) => {
-      state.failTransactionToast = {
-        ...action.payload,
-        toastId: TRANSACTION_STATUS_TOAST_ID
-      };
-    },
-    removeFailTransactionToast: (state: ToastsSliceState) => {
-      state.failTransactionToast = null;
     }
   },
 
@@ -99,9 +96,7 @@ export const {
   addCustomToast,
   removeCustomToast,
   addTransactionToast,
-  removeTransactionToast,
-  addFailTransactionToast,
-  removeFailTransactionToast
+  removeTransactionToast
 } = toastsSlice.actions;
 
 export default toastsSlice.reducer;

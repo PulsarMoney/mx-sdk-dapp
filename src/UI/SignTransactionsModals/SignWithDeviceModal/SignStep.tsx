@@ -1,109 +1,96 @@
-import React, { MouseEvent, ReactNode } from 'react';
-import {
-  faExclamationTriangle,
-  faTimes
-} from '@fortawesome/free-solid-svg-icons';
+import React, { MouseEvent, useEffect, useState } from 'react';
+import { faArrowLeft, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Address } from '@multiversx/sdk-core/out';
 import classNames from 'classnames';
+import { DataTestIdsEnum } from 'constants/index';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
+import { SignStepBody, SignStepBodyPropsType } from './components';
+import { ProgressHeader } from './components/ProgressHeader';
+import { ProgressHeaderPropsType } from './components/ProgressHeader/ProgressHeader.types';
+import {
+  SignStepPropsType as SignStepType,
+  SignStepInnerClassesType
+} from './signWithDeviceModal.types';
+export { SignStepType, SignStepInnerClassesType };
 
-import globalStyles from 'assets/sass/main.scss';
-import { useGetNetworkConfig } from 'hooks';
-import { useGetTokenDetails } from 'hooks/transactions/useGetTokenDetails';
-import type {
-  ActiveLedgerTransactionType,
-  MultiSignTransactionType
-} from 'types';
-import { PageState } from 'UI/PageState';
-import { ProgressSteps } from 'UI/ProgressSteps';
-import { TokenDetails } from 'UI/TokenDetails';
-import { TransactionData } from 'UI/TransactionData';
+const SignStepComponent = (props: SignStepType & WithStylesImportType) => {
+  const {
+    onSignTransaction,
+    handleClose,
+    onPrev,
+    GuardianScreen,
+    title,
+    waitingForDevice,
+    currentTransaction,
+    error,
+    allTransactions,
+    isLastTransaction,
+    currentStep,
+    className,
+    signStepInnerClasses,
+    globalStyles,
+    styles
+  } = props;
 
-import { getIdentifierType } from 'utils';
-import { getEgldLabel } from 'utils/network/getEgldLabel';
-import { formatAmount } from 'utils/operations/formatAmount';
-import { isTokenTransfer } from 'utils/transactions/isTokenTransfer';
+  const [showGuardianScreen, setShowGuardianScreen] = useState(false);
 
-import type { WithClassnameType } from '../../types';
-
-import { useSignStepsClasses } from './hooks/useSignStepsClasses';
-
-export interface SignStepInnerClassesType {
-  buttonsWrapperClassName?: string;
-  inputGroupClassName?: string;
-  inputLabelClassName?: string;
-  inputValueClassName?: string;
-  errorClassName?: string;
-  scamAlertClassName?: string;
-  buttonClassName?: string;
-  progressClassName?: string;
-}
-
-// TODO: Rename to "SignStepPropsType" when sdk-dapp@3.0.0
-export interface SignStepType extends WithClassnameType {
-  onSignTransaction: () => void;
-  onPrev: () => void;
-  handleClose: () => void;
-  waitingForDevice: boolean;
-  error: string | null;
-  callbackRoute?: string;
-  title?: ReactNode;
-  currentStep: number;
-  currentTransaction: ActiveLedgerTransactionType | null;
-  allTransactions: MultiSignTransactionType[];
-  isLastTransaction: boolean;
-  signStepInnerClasses?: SignStepInnerClassesType;
-}
-
-export const SignStep = ({
-  onSignTransaction,
-  handleClose,
-  onPrev,
-  title,
-  waitingForDevice,
-  currentTransaction,
-  error,
-  allTransactions,
-  isLastTransaction,
-  currentStep,
-  className,
-  signStepInnerClasses
-}: SignStepType) => {
-  const egldLabel = getEgldLabel();
+  // a unique mapping between nonce + data and step to prevent signing same transaction twice
+  const [nonceDataStepMap, setNonceDataStepMap] = useState<
+    Record<number, number | undefined>
+  >({});
 
   if (!currentTransaction) {
     return null;
   }
 
+  const currentNonce = currentTransaction.transaction.getNonce().valueOf();
+  const currentNonceData = `${currentNonce.toString()}_${
+    currentTransaction.transactionTokenInfo.multiTxData
+  }_${currentTransaction.transactionIndex}`;
+
+  useEffect(() => {
+    const isCurrentNonceRegistered =
+      Object.keys(nonceDataStepMap).includes(currentNonceData);
+    const isCurrentStepRegistered =
+      Object.values(nonceDataStepMap).includes(currentStep);
+
+    if (isCurrentNonceRegistered || isCurrentStepRegistered) {
+      return;
+    }
+
+    setNonceDataStepMap((existing) => {
+      return {
+        ...existing,
+        [currentNonceData]: currentStep
+      };
+    });
+  }, [currentNonceData, currentStep]);
+
   const transactionData = currentTransaction.transaction.getData().toString();
-  const { network } = useGetNetworkConfig();
 
-  const {
-    buttonsWrapperClassName,
-    inputGroupClassName,
-    inputLabelClassName,
-    inputValueClassName,
-    errorClassName,
-    scamAlertClassName,
-    buttonClassName,
-    progressClassName
-  } = signStepInnerClasses || {};
+  const { buttonsWrapperClassName, buttonClassName } =
+    signStepInnerClasses || {};
 
-  const { tokenId, nonce, amount, type, multiTxData, receiver } =
-    currentTransaction.transactionTokenInfo;
-
-  const isTokenTransaction = Boolean(
-    tokenId && isTokenTransfer({ tokenId, erdLabel: egldLabel })
-  );
+  const { type, multiTxData } = currentTransaction.transactionTokenInfo;
 
   const isFirst = currentStep === 0;
 
   const onCloseClick = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
+
     if (isFirst) {
       handleClose();
     } else {
       onPrev();
+    }
+  };
+
+  const signLastTransaction = isLastTransaction && !waitingForDevice;
+
+  const onSubmit = () => {
+    onSignTransaction();
+    if (signLastTransaction && GuardianScreen) {
+      return setShowGuardianScreen(true);
     }
   };
 
@@ -112,196 +99,137 @@ export const SignStep = ({
 
   let signBtnLabel = 'Sign & Continue';
   signBtnLabel = waitingForDevice ? 'Check your Ledger' : signBtnLabel;
-  signBtnLabel =
-    isLastTransaction && !waitingForDevice ? 'Sign & Submit' : signBtnLabel;
+  signBtnLabel = signLastTransaction ? 'Sign & Submit' : signBtnLabel;
   signBtnLabel = continueWithoutSigning ? 'Continue' : signBtnLabel;
 
-  const { isNft } = getIdentifierType(tokenId);
+  const signStepBodyProps: SignStepBodyPropsType = {
+    currentTransaction,
+    error,
+    allTransactions,
+    currentStep,
+    isGuarded: Boolean(GuardianScreen),
+    signStepInnerClasses
+  };
 
-  // If the token has a nonce means that this is an NFT. Eg: TokenId=TOKEN-1hfr, nonce=123 => NFT id=TOKEN-1hfr-123
-  const appendedNonce = nonce ? `-${nonce}` : '';
-  const nftId = `${tokenId}${appendedNonce}`;
+  const onGuardianScreenPrev = () => {
+    setShowGuardianScreen(false);
+  };
 
-  const { tokenDecimals, tokenAvatar } = useGetTokenDetails({
-    tokenId: nonce && nonce.length > 0 ? nftId : tokenId
-  });
+  const signTransactionNavigationTitle =
+    allTransactions.length > 1 ? 'Sign Transactions' : 'Sign Transaction';
 
-  const formattedAmount = formatAmount({
-    input: isTokenTransaction
-      ? amount
-      : currentTransaction.transaction.getValue().toString(),
-    decimals: isTokenTransaction ? tokenDecimals : Number(network.decimals),
-    digits: Number(network.digits),
-    showLastNonZeroDecimal: false,
-    addCommas: true
-  });
+  const confirmTransactionNavigationTitle =
+    allTransactions.length > 1 ? 'Confirm Transactions' : 'Confirm Transaction';
 
-  const scamReport = currentTransaction.receiverScamInfo;
-  const showProgressSteps = allTransactions.length > 1;
-  const classes = useSignStepsClasses(scamReport);
+  const defaultSignTitle =
+    allTransactions.length > 1
+      ? `Signing Transaction ${currentStep + 1} of ${allTransactions.length}`
+      : title || 'Sign Transaction';
 
-  const token = isNft ? nftId : tokenId || egldLabel;
-  const shownAmount = isNft ? amount : formattedAmount;
+  const isGuardianScreenVisible = GuardianScreen && showGuardianScreen;
+  const signFlowTitle = isGuardianScreenVisible
+    ? 'Verify Guardian'
+    : defaultSignTitle;
+
+  const steps: ProgressHeaderPropsType['steps'] = [
+    {
+      title: signTransactionNavigationTitle,
+      active: !showGuardianScreen
+    },
+    {
+      title: confirmTransactionNavigationTitle,
+      active: showGuardianScreen,
+      hidden: !signStepBodyProps.isGuarded
+    }
+  ];
+
+  const isSigningReady = nonceDataStepMap[currentNonceData] === currentStep;
 
   return (
-    <PageState
-      icon={error ? faTimes : null}
-      iconClass={classes.icon}
-      iconBgClass={error ? globalStyles.bgDanger : globalStyles.bgWarning}
-      iconSize='3x'
-      className={className}
-      title={title || 'Confirm on Ledger'}
-      description={
-        <>
-          {currentTransaction.transaction && (
-            <>
-              {showProgressSteps && (
-                <ProgressSteps
-                  totalSteps={allTransactions.length}
-                  currentStep={currentStep + 1} // currentStep starts at 0
-                  className={classNames(globalStyles.mb4, progressClassName)}
-                />
-              )}
-
-              <div
-                data-testid='transactionTitle'
-                className={classNames(classes.formGroup, inputGroupClassName)}
-              >
-                <div
-                  className={classNames(classes.formLabel, inputLabelClassName)}
-                >
-                  To
-                </div>
-
-                <div
-                  className={inputValueClassName}
-                  data-testid='confirmReceiver'
-                >
-                  {multiTxData
-                    ? new Address(receiver).bech32()
-                    : currentTransaction.transaction.getReceiver().toString()}
-                </div>
-
-                {scamReport && (
-                  <div
-                    className={classNames(
-                      classes.scamReport,
-                      scamAlertClassName
-                    )}
-                  >
-                    <span>
-                      <FontAwesomeIcon
-                        icon={faExclamationTriangle}
-                        className={classes.scamReportIcon}
-                      />
-
-                      <small data-testid='confirmScamReport'>
-                        {scamReport}
-                      </small>
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className={classNames(
-                  classes.tokenWrapper,
-                  inputGroupClassName
-                )}
-              >
-                <div
-                  className={classNames(
-                    classes.tokenLabel,
-                    inputLabelClassName
-                  )}
-                >
-                  Token
-                </div>
-
-                <div className={inputValueClassName} data-testid='confirmToken'>
-                  <div className={classes.tokenValue}>
-                    <TokenDetails.Icon
-                      tokenAvatar={tokenAvatar}
-                      token={token}
-                    />
-
-                    <div className={globalStyles.mr2}></div>
-                    <TokenDetails.Label token={token} />
-                  </div>
-                </div>
-              </div>
-
-              <div className={inputGroupClassName}>
-                <div
-                  className={classNames(
-                    classes.tokenAmountLabel,
-                    inputLabelClassName
-                  )}
-                >
-                  Amount
-                </div>
-
-                <div
-                  className={classNames(
-                    classes.tokenAmountValue,
-                    inputValueClassName
-                  )}
-                  data-testid='confirmAmount'
-                >
-                  {shownAmount}
-                </div>
-              </div>
-
-              {currentTransaction.transaction.getData() && (
-                <TransactionData
-                  isScCall={!tokenId}
-                  data={currentTransaction.transaction.getData().toString()}
-                  highlight={multiTxData}
-                  className={inputGroupClassName}
-                  innerTransactionDataClasses={{
-                    transactionDataInputLabelClassName: inputLabelClassName,
-                    transactionDataInputValueClassName: inputValueClassName
-                  }}
-                />
-              )}
-
-              {error && (
-                <p className={classNames(classes.errorMessage, errorClassName)}>
-                  {error}
-                </p>
-              )}
-            </>
-          )}
-        </>
-      }
-      action={
+    <div
+      className={classNames(
+        styles?.modalLayoutContent,
+        styles?.spaced,
+        className,
+        { [styles?.guarded ?? '']: signStepBodyProps.isGuarded }
+      )}
+    >
+      {isGuardianScreenVisible && (
         <div
-          className={classNames(
-            classes.buttonsWrapper,
-            buttonsWrapperClassName
-          )}
+          onClick={onGuardianScreenPrev}
+          className={classNames(styles?.modalLayoutHeadingIcon, styles?.back)}
         >
-          <button
-            id='closeButton'
-            data-testid='closeButton'
-            onClick={onCloseClick}
-            className={classNames(classes.cancelButton, buttonClassName)}
-          >
-            {isFirst ? 'Cancel' : 'Back'}
-          </button>
-
-          <button
-            type='button'
-            className={classNames(classes.signButton, buttonClassName)}
-            id='signBtn'
-            data-testid='signBtn'
-            onClick={onSignTransaction}
-            disabled={waitingForDevice}
-          >
-            {signBtnLabel}
-          </button>
+          <FontAwesomeIcon icon={faArrowLeft} />
         </div>
-      }
-    />
+      )}
+
+      <div
+        onClick={onCloseClick}
+        className={classNames(styles?.modalLayoutHeadingIcon, styles?.close)}
+      >
+        <FontAwesomeIcon icon={faTimes} />
+      </div>
+
+      {signStepBodyProps.isGuarded && (
+        <ProgressHeader steps={steps} type='detailed' size='small' />
+      )}
+
+      <div
+        className={styles?.title}
+        data-testid={DataTestIdsEnum.signStepTitle}
+      >
+        {signFlowTitle || 'Confirm on Ledger'}
+      </div>
+
+      {isGuardianScreenVisible ? (
+        <GuardianScreen
+          {...props}
+          onPrev={onGuardianScreenPrev}
+          guardianFormDescription='Enter the code from your Authenticator app to verify this transaction.'
+        />
+      ) : (
+        <>
+          <SignStepBody {...signStepBodyProps} />
+
+          <div
+            className={classNames(styles?.signButtons, buttonsWrapperClassName)}
+          >
+            <button
+              id='closeButton'
+              data-testid={DataTestIdsEnum.closeButton}
+              onClick={onCloseClick}
+              className={classNames(styles?.signButtonCancel, buttonClassName)}
+            >
+              {currentStep === 0 ? 'Cancel' : 'Back'}
+            </button>
+
+            <button
+              type='button'
+              className={classNames(
+                globalStyles?.btnPrimary,
+                styles?.signButtonSubmit,
+                buttonClassName
+              )}
+              id='signBtn'
+              data-testid={DataTestIdsEnum.signBtn}
+              onClick={onSubmit}
+              disabled={waitingForDevice || !isSigningReady}
+            >
+              {isSigningReady ? signBtnLabel : 'Loading...'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 };
+
+export const SignStep = withStyles(SignStepComponent, {
+  ssrStyles: () =>
+    import(
+      'UI/SignTransactionsModals/SignWithDeviceModal/signWithDeviceModalStyles.scss'
+    ),
+  clientStyles: () =>
+    require('UI/SignTransactionsModals/SignWithDeviceModal/signWithDeviceModalStyles.scss')
+      .default
+});

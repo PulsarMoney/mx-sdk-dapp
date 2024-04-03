@@ -13,6 +13,8 @@ import {
 import { LoginMethodsEnum } from 'types/enums.types';
 import { getIsLoggedIn } from 'utils/getIsLoggedIn';
 import { optionalRedirect } from 'utils/internal';
+import { getDefaultCallbackUrl } from 'utils/window';
+import { getWindowLocation } from 'utils/window/getWindowLocation';
 import { useLoginService } from './useLoginService';
 
 export type UseOperaLoginReturnType = [
@@ -53,10 +55,10 @@ export const useOperaLogin = ({
         return;
       }
 
+      const { origin } = getWindowLocation();
+      const defaulCallbackUrl = getDefaultCallbackUrl();
       const callbackUrl: string = encodeURIComponent(
-        `${window?.location.origin}${
-          callbackRoute ?? window?.location.pathname
-        }`
+        `${origin}${callbackRoute ?? defaulCallbackUrl}`
       );
 
       if (hasNativeAuth && !token) {

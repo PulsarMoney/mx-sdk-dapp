@@ -2,6 +2,7 @@ import { Address } from '@multiversx/sdk-core';
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { REHYDRATE } from 'redux-persist';
 import { ZERO } from 'constants/index';
+import { BatchTransactionsWSResponseType } from 'types';
 import { AccountType } from 'types/account.types';
 import { storage } from 'utils/storage';
 import { localStorageKeys } from 'utils/storage/local';
@@ -36,12 +37,17 @@ export interface AccountInfoSliceType {
     timestamp: number;
     message: string;
   } | null;
+  websocketBatchEvent: {
+    timestamp: number;
+    data: BatchTransactionsWSResponseType;
+  } | null;
   accountLoadingError: string | null;
 }
 
 export const emptyAccount: AccountType = {
   balance: '...',
   address: '',
+  isGuarded: false,
   nonce: 0,
   txCount: 0,
   scrCount: 0,
@@ -51,6 +57,7 @@ export const emptyAccount: AccountType = {
 const initialState: AccountInfoSliceType = {
   address: '',
   websocketEvent: null,
+  websocketBatchEvent: null,
   accounts: { '': emptyAccount },
   ledgerAccount: null,
   publicKey: '',
@@ -140,6 +147,15 @@ export const accountInfoSlice = createSlice({
         timestamp: Date.now(),
         message: action.payload
       };
+    },
+    setWebsocketBatchEvent: (
+      state: AccountInfoSliceType,
+      action: PayloadAction<BatchTransactionsWSResponseType>
+    ) => {
+      state.websocketBatchEvent = {
+        timestamp: Date.now(),
+        data: action.payload
+      };
     }
   },
   extraReducers: (builder) => {
@@ -185,7 +201,8 @@ export const {
   setWalletConnectAccount,
   setIsAccountLoading,
   setAccountLoadingError,
-  setWebsocketEvent
+  setWebsocketEvent,
+  setWebsocketBatchEvent
 } = accountInfoSlice.actions;
 
 export default accountInfoSlice.reducer;

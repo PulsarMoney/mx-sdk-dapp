@@ -2,30 +2,28 @@ import { getTransactionsByHashes as defaultGetTxByHash } from 'apiCalls/transact
 import { updateSignedTransactionStatus } from 'reduxStore/slices';
 import { store } from 'reduxStore/store';
 import {
-  GetTransactionsByHashesReturnType,
-  GetTransactionsByHashesType
-} from 'types';
-import {
   CustomTransactionInformation,
+  GetTransactionsByHashesReturnType,
   SignedTransactionsBodyType
 } from 'types';
 import { TransactionServerStatusesEnum } from 'types/enums.types';
+import { TransactionsTrackerType } from 'types/transactionsTracker.types';
 import { refreshAccount } from 'utils/account';
 import {
   getIsTransactionFailed,
   getIsTransactionPending,
   getIsTransactionSuccessful
 } from 'utils/transactions';
-
 import { getPendingTransactions } from './getPendingTransactions';
 import { manageFailedTransactions } from './manageFailedTransactions';
 import { manageTimedOutTransactions } from './manageTimedOutTransactions';
 
-export interface TransactionStatusTrackerPropsType {
+export interface TransactionStatusTrackerPropsType
+  extends TransactionsTrackerType {
   sessionId: string;
   transactionBatch: SignedTransactionsBodyType;
-  getTransactionsByHash?: GetTransactionsByHashesType;
   shouldRefreshBalance?: boolean;
+  isSequential?: boolean;
 }
 
 interface RetriesType {
@@ -40,16 +38,24 @@ interface ManageTransactionType {
   sessionId: string;
   customTransactionInformation?: CustomTransactionInformation;
   shouldRefreshBalance?: boolean;
+  isSequential?: boolean;
 }
 
 function manageTransaction({
   serverTransaction,
   sessionId,
   customTransactionInformation,
-  shouldRefreshBalance
+  shouldRefreshBalance,
+  isSequential
 }: ManageTransactionType) {
-  const { hash, status, results, invalidTransaction, hasStatusChanged } =
-    serverTransaction;
+  const {
+    hash,
+    status,
+    inTransit,
+    results,
+    invalidTransaction,
+    hasStatusChanged
+  } = serverTransaction;
   try {
     if (timeouts.includes(hash)) {
       return;
@@ -62,10 +68,28 @@ function manageTransaction({
       return;
     }
 
-    if (invalidTransaction || getIsTransactionPending(status)) {
+    if (
+      (invalidTransaction && !isSequential) ||
+      getIsTransactionPending(status)
+    ) {
       retries[hash] = retries[hash] ? retries[hash] + 1 : 1;
       return;
     }
+
+    // The tx is from a sequential batch.
+    // If the transactions before this are not successful then it means that no other tx will be processed
+    if (isSequential && !status) {
+      store.dispatch(
+        updateSignedTransactionStatus({
+          sessionId,
+          status,
+          transactionHash: hash,
+          inTransit
+        })
+      );
+      return;
+    }
+
     if (hasStatusChanged) {
       if (
         getIsTransactionSuccessful(status) &&
@@ -80,7 +104,8 @@ function manageTransaction({
               updateSignedTransactionStatus({
                 sessionId,
                 status: TransactionServerStatusesEnum.success,
-                transactionHash: hash
+                transactionHash: hash,
+                inTransit
               })
             ),
           customTransactionInformation?.completedTransactionsDelay
@@ -91,7 +116,8 @@ function manageTransaction({
           updateSignedTransactionStatus({
             sessionId,
             status,
-            transactionHash: hash
+            transactionHash: hash,
+            inTransit
           })
         );
       }
@@ -115,7 +141,10 @@ export async function checkBatch({
   sessionId,
   transactionBatch: { transactions, customTransactionInformation },
   getTransactionsByHash = defaultGetTxByHash,
-  shouldRefreshBalance
+  shouldRefreshBalance,
+  isSequential,
+  onSuccess,
+  onFail
 }: TransactionStatusTrackerPropsType) {
   try {
     if (transactions == null) {
@@ -131,8 +160,33 @@ export async function checkBatch({
         serverTransaction,
         sessionId,
         customTransactionInformation,
-        shouldRefreshBalance
+        shouldRefreshBalance,
+        isSequential
       });
+    }
+
+    const hasCompleted = serverTransactions.every(
+      (tx) => tx.status !== TransactionServerStatusesEnum.pending
+    );
+
+    // Call the onSuccess or onFail callback only if the transactions are sent normally (not using batch transactions mechanism).
+    // The batch transactions mechanism will call the callbacks separately.
+    if (hasCompleted && !customTransactionInformation?.grouping) {
+      const isSuccessful = serverTransactions.every(
+        (tx) => tx.status === TransactionServerStatusesEnum.success
+      );
+
+      if (isSuccessful) {
+        return onSuccess?.(sessionId);
+      }
+
+      const isFailed = serverTransactions.some(
+        (tx) => tx.status === TransactionServerStatusesEnum.fail
+      );
+
+      if (isFailed) {
+        return onFail?.(sessionId);
+      }
     }
   } catch (error) {
     console.error(error);

@@ -1,28 +1,36 @@
 import { useEffect, useRef } from 'react';
-import { Transaction } from '@multiversx/sdk-core';
+import {
+  Transaction,
+  TransactionOptions,
+  TransactionVersion
+} from '@multiversx/sdk-core';
 
 import { ExtensionProvider } from '@multiversx/sdk-extension-provider';
+import uniq from 'lodash/uniq';
 import {
   ERROR_SIGNING,
   ERROR_SIGNING_TX,
   MISSING_PROVIDER_MESSAGE,
   PROVIDER_NOT_INITIALIZED,
+  SENDER_DIFFERENT_THAN_LOGGED_IN_ADDRESS,
   TRANSACTION_CANCELLED,
-  TRANSACTION_STATUS_TOAST_ID,
   WALLET_SIGN_SESSION
 } from 'constants/index';
+import { useGetAccount } from 'hooks/account';
 import { useGetAccountProvider } from 'hooks/account/useGetAccountProvider';
 import { useParseSignedTransactions } from 'hooks/transactions/useParseSignedTransactions';
 import { getProviderType } from 'providers/utils';
 
 import { useDispatch, useSelector } from 'reduxStore/DappProviderContext';
-import { signTransactionsCancelMessageSelector } from 'reduxStore/selectors';
+import {
+  signTransactionsCancelMessageSelector,
+  walletAddressSelector
+} from 'reduxStore/selectors';
 import {
   clearAllTransactionsToSign,
   clearTransactionsInfoForSessionId,
   moveTransactionsToSignedState,
   MoveTransactionsToSignedStatePayloadType,
-  removeCustomToast,
   setSignTransactionsCancelMessage
 } from 'reduxStore/slices';
 import {
@@ -30,12 +38,17 @@ import {
   TransactionBatchStatusesEnum
 } from 'types/enums.types';
 
+import { getAccount } from 'utils/account/getAccount';
 import { builtCallbackUrl } from 'utils/transactions/builtCallbackUrl';
 import { parseTransactionAfterSigning } from 'utils/transactions/parseTransactionAfterSigning';
+import { getDefaultCallbackUrl } from 'utils/window';
+import { getWindowLocation } from 'utils/window/getWindowLocation';
 
 import {
   useSetTransactionNonces,
-  getShouldMoveTransactionsToSignedState
+  getShouldMoveTransactionsToSignedState,
+  checkNeedsGuardianSigning,
+  checkIsValidSender
 } from './helpers';
 import { useSignTransactionsCommonData } from './useSignTransactionsCommonData';
 
@@ -43,9 +56,12 @@ export const useSignTransactions = () => {
   const dispatch = useDispatch();
   const savedCallback = useRef('/');
   const { provider } = useGetAccountProvider();
+  const walletAddress = useSelector(walletAddressSelector);
+
   const providerType = getProviderType(provider);
   const isSigningRef = useRef(false);
   const setTransactionNonces = useSetTransactionNonces();
+  const { isGuarded, address } = useGetAccount();
 
   const signTransactionsCancelMessage = useSelector(
     signTransactionsCancelMessageSelector
@@ -67,7 +83,6 @@ export const useSignTransactions = () => {
 
     dispatch(clearAllTransactionsToSign());
     dispatch(clearTransactionsInfoForSessionId(sessionId));
-    dispatch(removeCustomToast(TRANSACTION_STATUS_TOAST_ID));
 
     isSigningRef.current = false;
 
@@ -108,9 +123,18 @@ export const useSignTransactions = () => {
     callbackRoute = ''
   ) => {
     const urlParams = { [WALLET_SIGN_SESSION]: sessionId };
-    const callbackUrl = window?.location
-      ? `${window.location.origin}${callbackRoute}`
-      : `${callbackRoute}`;
+    let callbackUrl = callbackRoute;
+
+    if (window?.location) {
+      const { search, origin } = getWindowLocation();
+      const searchParams = new URLSearchParams(search);
+      callbackUrl = `${origin}${callbackRoute}`;
+
+      searchParams.forEach((value, key) => {
+        urlParams[key] = value;
+      });
+    }
+
     const buildedCallbackUrl = builtCallbackUrl({ callbackUrl, urlParams });
 
     provider.signTransactions(transactions, {
@@ -130,8 +154,9 @@ export const useSignTransactions = () => {
       customTransactionInformation
     } = transactionsToSign;
     const { redirectAfterSign } = customTransactionInformation;
-    const redirectRoute = callbackRoute || window?.location.pathname;
-    const isCurrentRoute = window?.location.pathname.includes(redirectRoute);
+    const defaultCallbackUrl = getDefaultCallbackUrl();
+    const redirectRoute = callbackRoute || defaultCallbackUrl;
+    const isCurrentRoute = defaultCallbackUrl.includes(redirectRoute);
     const shouldRedirectAfterSign = redirectAfterSign && !isCurrentRoute;
 
     try {
@@ -150,11 +175,22 @@ export const useSignTransactions = () => {
       return;
     }
 
+    const allowGuardian = !customTransactionInformation.skipGuardian;
+
     try {
       isSigningRef.current = true;
-      const signedTransactions: Transaction[] = await provider.signTransactions(
-        transactions
-      );
+      const signedTransactions: Transaction[] =
+        (await provider.signTransactions(
+          isGuarded && allowGuardian
+            ? transactions.map((transaction) => {
+                transaction.setVersion(TransactionVersion.withTxOptions());
+                transaction.setOptions(
+                  TransactionOptions.withOptions({ guarded: true })
+                );
+                return transaction;
+              })
+            : transactions
+        )) ?? [];
       isSigningRef.current = false;
 
       const shouldMoveTransactionsToSignedState =
@@ -167,6 +203,19 @@ export const useSignTransactions = () => {
       const signedTransactionsArray = Object.values(signedTransactions).map(
         (tx) => parseTransactionAfterSigning(tx)
       );
+
+      const { needs2FaSigning, sendTransactionsToGuardian } =
+        checkNeedsGuardianSigning({
+          transactions: signedTransactions,
+          sessionId,
+          callbackRoute,
+          isGuarded: isGuarded && allowGuardian,
+          walletAddress
+        });
+
+      if (needs2FaSigning) {
+        return sendTransactionsToGuardian();
+      }
 
       const payload: MoveTransactionsToSignedStatePayloadType = {
         sessionId,
@@ -214,12 +263,34 @@ export const useSignTransactions = () => {
       return;
     }
 
+    const senderAddresses = uniq(
+      transactions
+        .map((tx) => tx.getSender().toString())
+        .filter((sender) => sender)
+    ) as string[];
+
+    if (senderAddresses.length > 1) {
+      throw new Error('Multiple senders are not allowed');
+    }
+
+    const senderAccount = senderAddresses.length
+      ? await getAccount(senderAddresses[0])
+      : null;
+
+    const isValidSender = checkIsValidSender(senderAccount, address);
+
+    if (!isValidSender) {
+      console.error(SENDER_DIFFERENT_THAN_LOGGED_IN_ADDRESS);
+
+      return onCancel(SENDER_DIFFERENT_THAN_LOGGED_IN_ADDRESS);
+    }
+
     /*
      * if the transaction is cancelled
      * the callback will go to undefined,
      * we save the most recent one for a valid transaction
      */
-    savedCallback.current = callbackRoute || window?.location.pathname;
+    savedCallback.current = callbackRoute || getWindowLocation().pathname;
 
     try {
       const isSigningWithWebWallet = providerType === LoginMethodsEnum.wallet;
@@ -254,6 +325,7 @@ export const useSignTransactions = () => {
       console.error(errorMessage, err);
     }
   };
+
   useEffect(() => {
     if (hasTransactions) {
       signTransactions();

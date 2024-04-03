@@ -19,11 +19,13 @@ export interface SignTransactionsModalsPropsType {
   className?: string;
   CustomConfirmScreens?: CustomConfirmScreensType;
   verifyReceiverScam?: SignPropsType['verifyReceiverScam'];
+  GuardianScreen?: SignPropsType['GuardianScreen'];
 }
 
 export const SignTransactionsModals = ({
   className,
   CustomConfirmScreens,
+  GuardianScreen,
   verifyReceiverScam = true
 }: SignTransactionsModalsPropsType) => {
   const { loginMethod } = useGetLoginInfo();
@@ -50,6 +52,7 @@ export const SignTransactionsModals = ({
       return (
         <ConfirmationScreenWrapper
           Screen={Screen}
+          GuardianScreen={GuardianScreen}
           verifyReceiverScam={verifyReceiverScam}
           className={className}
         />
@@ -61,7 +64,6 @@ export const SignTransactionsModals = ({
   switch (loginMethod) {
     case LoginMethodsEnum.ledger:
       return renderScreen({ Screen: ConfirmScreens.Ledger, isDevice: true });
-    case LoginMethodsEnum.walletconnect:
     case LoginMethodsEnum.walletconnectv2:
       return renderScreen({ Screen: ConfirmScreens.WalletConnect });
     case LoginMethodsEnum.extension:

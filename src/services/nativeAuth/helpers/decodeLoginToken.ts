@@ -1,4 +1,4 @@
-import { isString } from 'lodash';
+import isString from 'lodash/isString';
 import { decodeBase64 } from 'utils/decoders/base64Utils';
 
 export interface DecodedLoginTokenType {
@@ -18,10 +18,6 @@ export const decodeLoginToken = (
   const parts = loginToken.split('.');
 
   if (parts.length !== 4) {
-    console.error(
-      'Invalid loginToken. You may be trying to decode a nativeAuthToken. Try using decodeNativeAuthToken method instead'
-    );
-
     return null;
   }
 

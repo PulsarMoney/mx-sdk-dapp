@@ -1,10 +1,10 @@
-import type { ReactNode } from 'react';
-import type { Address, Transaction } from '@multiversx/sdk-core';
-import type { IPlainTransactionObject } from '@multiversx/sdk-core/out/interface';
+import { ReactNode, Dispatch, SetStateAction } from 'react';
+import { Address, Transaction } from '@multiversx/sdk-core';
+import { IPlainTransactionObject } from '@multiversx/sdk-core/out/interface';
 
-import type { SignStepInnerClassesType } from 'UI/SignTransactionsModals/SignWithDeviceModal/SignStep';
-import type { WithClassnameType } from '../UI/types';
-import type {
+import { SignStepInnerClassesType } from 'UI/SignTransactionsModals/SignWithDeviceModal/SignStep';
+import { WithClassnameType } from '../UI/types';
+import {
   TransactionBatchStatusesEnum,
   TransactionServerStatusesEnum,
   TransactionTypesEnum
@@ -42,6 +42,7 @@ export type RawTransactionType = IPlainTransactionObject;
 export interface SignedTransactionType extends RawTransactionType {
   hash: string;
   status: TransactionServerStatusesEnum;
+  inTransit?: boolean;
   errorMessage?: string;
   customTransactionInformation?: CustomTransactionInformation;
 }
@@ -105,6 +106,9 @@ export interface SimpleTransactionType {
   chainID?: string;
   version?: number;
   options?: number;
+  guardian?: string;
+  guardianSignature?: string;
+  nonce?: number;
 }
 
 export interface TransactionsDisplayInfoType {
@@ -114,6 +118,7 @@ export interface TransactionsDisplayInfoType {
   submittedMessage?: string;
   transactionDuration?: number;
   timedOutMessage?: string;
+  invalidMessage?: string;
 }
 
 export interface SendSimpleTransactionPropsType {
@@ -128,6 +133,19 @@ export interface SendTransactionsPropsType {
     | (Transaction | SimpleTransactionType)[];
   redirectAfterSign?: boolean;
   signWithoutSending: boolean;
+  skipGuardian?: boolean;
+  completedTransactionsDelay?: number;
+  callbackRoute?: string;
+  transactionsDisplayInfo: TransactionsDisplayInfoType;
+  minGasLimit?: number;
+  sessionInformation?: any;
+}
+
+export interface SendBatchTransactionsPropsType {
+  transactions: (Transaction | SimpleTransactionType)[][];
+  redirectAfterSign?: boolean;
+  signWithoutSending?: boolean;
+  skipGuardian?: boolean;
   completedTransactionsDelay?: number;
   callbackRoute?: string;
   transactionsDisplayInfo: TransactionsDisplayInfoType;
@@ -144,11 +162,12 @@ export interface SignTransactionsPropsType {
 }
 
 export interface ActiveLedgerTransactionType {
-  transaction: Transaction;
-  transactionTokenInfo: TransactionDataTokenType;
-  isTokenTransaction: boolean;
   dataField: string;
+  isTokenTransaction: boolean;
   receiverScamInfo: string | null;
+  transaction: Transaction;
+  transactionIndex: number;
+  transactionTokenInfo: TransactionDataTokenType;
 }
 
 export interface SmartContractResult {
@@ -168,6 +187,21 @@ export interface SmartContractResult {
   returnMessage: string;
 }
 
+export type DeviceSignedTransactions = Record<number, Transaction>;
+
+export interface GuardianScreenType extends WithClassnameType {
+  address: string;
+  onSignTransaction: () => void;
+  onPrev: () => void;
+  title?: ReactNode;
+  signStepInnerClasses?: SignStepInnerClassesType;
+  signedTransactions?: DeviceSignedTransactions;
+  guardianFormDescription?: ReactNode;
+  setSignedTransactions?: Dispatch<
+    SetStateAction<DeviceSignedTransactions | undefined>
+  >;
+}
+
 export interface SignModalPropsType extends WithClassnameType {
   handleClose: () => void;
   error: string | null;
@@ -177,6 +211,7 @@ export interface SignModalPropsType extends WithClassnameType {
   modalContentClassName?: string;
   verifyReceiverScam?: boolean;
   title?: ReactNode;
+  GuardianScreen?: (signProps: GuardianScreenType) => JSX.Element;
   signStepInnerClasses?: SignStepInnerClassesType;
 }
 
@@ -185,11 +220,24 @@ export interface CustomTransactionInformation {
   sessionInformation: any;
   completedTransactionsDelay?: number;
   signWithoutSending: boolean;
+  /**
+   * If true, the change guardian action will not trigger transaction version update
+   */
+  skipGuardian?: boolean;
+  /**
+   * Keeps indexes of transactions that should be grouped together. If not provided, all transactions will be grouped together. Used only for batch transactions.
+   */
+  grouping?: number[][];
 }
 
 export interface SendTransactionReturnType {
   error?: string;
   sessionId: string | null;
+}
+
+export interface SendBatchTransactionReturnType {
+  error?: string;
+  batchId: string | null;
 }
 
 export type GetTransactionsByHashesType = (
@@ -200,6 +248,7 @@ export type GetTransactionsByHashesReturnType = {
   hash: string;
   invalidTransaction: boolean;
   status: TransactionServerStatusesEnum;
+  inTransit?: boolean;
   results: SmartContractResult[];
   sender: string;
   receiver: string;
@@ -218,3 +267,5 @@ export interface TransactionLinkType {
   label: string;
   address: string;
 }
+
+export type Nullable<T> = T | null;

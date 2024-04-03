@@ -1,4 +1,5 @@
 export * from './accountInfoSelectors';
+export * from './dappConfigSelector';
 export * from './loginInfoSelectors';
 export * from './modalsSelectors';
 export * from './networkConfigSelectors';

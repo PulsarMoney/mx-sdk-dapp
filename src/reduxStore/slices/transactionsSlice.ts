@@ -13,6 +13,7 @@ import {
 } from 'types/enums.types';
 import {
   getIsTransactionFailed,
+  getIsTransactionNotExecuted,
   getIsTransactionSuccessful
 } from 'utils/transactions/transactionStateByStatus';
 import { logoutAction } from '../commonActions';
@@ -22,11 +23,13 @@ export interface UpdateSignedTransactionsPayloadType {
   status: TransactionBatchStatusesEnum;
   errorMessage?: string;
   transactions?: SignedTransactionType[];
+  customTransactionInformationOverrides?: Partial<CustomTransactionInformation>;
 }
 
 export interface MoveTransactionsToSignedStatePayloadType
   extends SignedTransactionsBodyType {
   sessionId: string;
+  customTransactionInformation?: CustomTransactionInformation;
 }
 
 export interface UpdateSignedTransactionStatusPayloadType {
@@ -34,6 +37,7 @@ export interface UpdateSignedTransactionStatusPayloadType {
   transactionHash: string;
   status: TransactionServerStatusesEnum;
   errorMessage?: string;
+  inTransit?: boolean;
 }
 
 export interface TransactionsSliceStateType {
@@ -68,18 +72,33 @@ export const transactionsSlice = createSlice({
       state: TransactionsSliceStateType,
       action: PayloadAction<MoveTransactionsToSignedStatePayloadType>
     ) => {
-      const { sessionId, transactions, errorMessage, status, redirectRoute } =
-        action.payload;
-      const customTransactionInformation =
-        state.customTransactionInformationForSessionId?.[sessionId] ||
-        defaultCustomInformation;
+      const {
+        sessionId,
+        transactions,
+        errorMessage,
+        status,
+        redirectRoute,
+        customTransactionInformation: overrideCustomTransactionInformation
+      } = action.payload;
+
+      state.customTransactionInformationForSessionId[sessionId] = {
+        ...defaultCustomInformation,
+        ...(state.signedTransactions[sessionId]?.customTransactionInformation ||
+          {}),
+        ...(state.customTransactionInformationForSessionId[sessionId] || {})
+      };
+
       state.signedTransactions[sessionId] = {
         transactions,
         status,
         errorMessage,
         redirectRoute,
-        customTransactionInformation
+        customTransactionInformation: {
+          ...state.customTransactionInformationForSessionId[sessionId],
+          ...(overrideCustomTransactionInformation ?? {})
+        }
       };
+
       if (state?.transactionsToSign?.sessionId === sessionId) {
         state.transactionsToSign = initialState.transactionsToSign;
       }
@@ -112,8 +131,8 @@ export const transactionsSlice = createSlice({
       action: PayloadAction<UpdateSignedTransactionsPayloadType>
     ) => {
       const { sessionId, status, errorMessage, transactions } = action.payload;
-      const transaction = state.signedTransactions[sessionId];
-      if (transaction != null) {
+      const session = state.signedTransactions[sessionId];
+      if (session != null) {
         state.signedTransactions[sessionId].status = status;
         if (errorMessage != null) {
           state.signedTransactions[sessionId].errorMessage = errorMessage;
@@ -127,7 +146,7 @@ export const transactionsSlice = createSlice({
       state: TransactionsSliceStateType,
       action: PayloadAction<UpdateSignedTransactionStatusPayloadType>
     ) => {
-      const { sessionId, status, errorMessage, transactionHash } =
+      const { sessionId, status, errorMessage, transactionHash, inTransit } =
         action.payload;
       const transactions = state.signedTransactions?.[sessionId]?.transactions;
       if (transactions != null) {
@@ -137,7 +156,8 @@ export const transactionsSlice = createSlice({
               return {
                 ...transaction,
                 status,
-                errorMessage
+                errorMessage,
+                inTransit
               };
             }
             return transaction;
@@ -154,6 +174,13 @@ export const transactionsSlice = createSlice({
         ]?.transactions?.every((transaction) =>
           getIsTransactionFailed(transaction.status)
         );
+
+        const areTransactionsNotExecuted = state.signedTransactions[
+          sessionId
+        ]?.transactions?.every((transaction) =>
+          getIsTransactionNotExecuted(transaction.status)
+        );
+
         if (areTransactionsSuccessful) {
           state.signedTransactions[sessionId].status =
             TransactionBatchStatusesEnum.success;
@@ -161,6 +188,10 @@ export const transactionsSlice = createSlice({
         if (areTransactionsFailed) {
           state.signedTransactions[sessionId].status =
             TransactionBatchStatusesEnum.fail;
+        }
+        if (areTransactionsNotExecuted) {
+          state.signedTransactions[sessionId].status =
+            TransactionBatchStatusesEnum.invalid;
         }
       }
     },
@@ -194,6 +225,24 @@ export const transactionsSlice = createSlice({
       action: PayloadAction<string | null>
     ) => {
       state.signTransactionsCancelMessage = action.payload;
+    },
+    updateSignedTransactionsCustomTransactionInformation: (
+      state: TransactionsSliceStateType,
+      action: PayloadAction<{
+        sessionId: string;
+        customTransactionInformationOverrides: Partial<CustomTransactionInformation>;
+      }>
+    ) => {
+      const { sessionId, customTransactionInformationOverrides } =
+        action.payload;
+      const session = state.signedTransactions[sessionId];
+      if (session != null) {
+        state.signedTransactions[sessionId].customTransactionInformation = {
+          ...(state.signedTransactions[sessionId]
+            .customTransactionInformation as CustomTransactionInformation),
+          ...customTransactionInformationOverrides
+        };
+      }
     }
   },
   extraReducers: (builder) => {
@@ -243,7 +292,8 @@ export const {
   clearTransactionToSign,
   setSignTransactionsError,
   setSignTransactionsCancelMessage,
-  moveTransactionsToSignedState
+  moveTransactionsToSignedState,
+  updateSignedTransactionsCustomTransactionInformation
 } = transactionsSlice.actions;
 
 export default transactionsSlice.reducer;

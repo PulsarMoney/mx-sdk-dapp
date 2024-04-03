@@ -20,6 +20,8 @@ afterAll(() => server.close());
 
 window.scrollTo = jest.fn();
 
+jest.retryTimes(3);
+
 jest.mock('./utils/network/getEgldLabel', () => {
   return {
     __esModule: true, // this property makes it work
@@ -59,7 +61,9 @@ jest.mock(
 );
 
 jest.mock('react-redux/lib/utils/Subscription', () => {
-  const { createSubscription } = require('./__mocks__');
+  const {
+    createSubscription
+  } = require('./__mocks__/packages/createSubscription');
   return {
     __esModule: true,
     createSubscription

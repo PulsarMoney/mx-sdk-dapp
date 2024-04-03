@@ -12,5 +12,11 @@ export const sanitizeCallbackUrl = (
   const pathname =
     url.pathname === '/' && !targetURL.endsWith('/') ? '' : url.pathname;
 
-  return `${url.origin}${pathname}${questionMark}${params.toString()}`;
+  if (url.protocol === 'vscode:') {
+    return targetURL;
+  }
+
+  return `${url.origin}${pathname}${questionMark}${params.toString()}${
+    url.hash
+  }`;
 };

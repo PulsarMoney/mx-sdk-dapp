@@ -5,6 +5,7 @@ import { PersistConfig } from 'redux-persist/lib/types';
 import getRootReducer from 'reduxStore/reducers';
 import { defaultNetwork } from 'reduxStore/slices';
 import account from 'reduxStore/slices/accountInfoSlice';
+import batchTransactions from 'reduxStore/slices/batchTransactionsSlice';
 import loginInfo from 'reduxStore/slices/loginInfoSlice';
 import modals from 'reduxStore/slices/modalsSlice';
 import networkConfig from 'reduxStore/slices/networkConfigSlice';
@@ -65,6 +66,10 @@ const transactionsReducerPersistConfig = getSessionStoragePersistConfig(
   'sdk-dapp-transactions',
   [ReducersEnum.transactionsToSign]
 );
+const batchTransactionsReducerPersistConfig = getSessionStoragePersistConfig(
+  'sdk-dapp-batchTransactions',
+  [ReducersEnum.batchTransactions]
+);
 const toastsReducerPersistConfig =
   getSessionStoragePersistConfig('sdk-dapp-toasts');
 const signedMessageInfoersistConfig = getSessionStoragePersistConfig(
@@ -93,6 +98,10 @@ export const sessionStorageReducers = {
   [ReducersEnum.transactionsInfo]: persistReducer(
     transactionsInfoPersistConfig,
     transactionsInfo
+  ),
+  [ReducersEnum.batchTransactions]: persistReducer(
+    batchTransactionsReducerPersistConfig,
+    batchTransactions
   ),
   [ReducersEnum.signedMessageInfo]: persistReducer(
     signedMessageInfoersistConfig,

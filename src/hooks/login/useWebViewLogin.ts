@@ -1,19 +1,21 @@
 import { useEffect } from 'react';
-
-import { useDispatch } from 'reduxStore/DappProviderContext';
-
+import { useDispatch, useSelector } from 'reduxStore/DappProviderContext';
+import { shouldUseWebViewProviderSelector } from 'reduxStore/selectors';
 import { loginWithNativeAuthToken } from 'services/nativeAuth/helpers/loginWithNativeAuthToken';
+import { getWebviewToken } from 'utils/account/getWebviewToken';
 
 export function useWebViewLogin() {
   const dispatch = useDispatch();
-
-  const search = typeof window !== 'undefined' ? window?.location?.search : '';
-  const urlSearchParams = new URLSearchParams(search) as any;
-  const searchParams = Object.fromEntries(urlSearchParams);
-
-  const token = searchParams?.accessToken;
+  const shouldUseWebViewProvider = useSelector(
+    shouldUseWebViewProviderSelector
+  );
+  const token = getWebviewToken();
 
   useEffect(() => {
+    if (!shouldUseWebViewProvider) {
+      return;
+    }
+
     loginWithNativeAuthToken(token, dispatch);
-  }, [token]);
+  }, [token, shouldUseWebViewProvider]);
 }

@@ -2,7 +2,8 @@ import { combineReducers } from '@reduxjs/toolkit';
 
 import { ReducersEnum } from 'types/reducers.types';
 import account from './slices/accountInfoSlice';
-import dappModal from './slices/dappModalsSlice';
+import batchTransactions from './slices/batchTransactionsSlice';
+import dappConfig from './slices/dappConfigSlice';
 import loginInfo from './slices/loginInfoSlice';
 import modals from './slices/modalsSlice';
 import networkConfig from './slices/networkConfigSlice';
@@ -13,14 +14,15 @@ import transactions from './slices/transactionsSlice';
 
 const reducers = {
   [ReducersEnum.account]: account,
-  [ReducersEnum.dappModal]: dappModal,
+  [ReducersEnum.dappConfig]: dappConfig,
   [ReducersEnum.loginInfo]: loginInfo,
   [ReducersEnum.modals]: modals,
   [ReducersEnum.networkConfig]: networkConfig,
   [ReducersEnum.signedMessageInfo]: signedMessageInfoReducer,
   [ReducersEnum.toasts]: toasts,
   [ReducersEnum.transactionsInfo]: transactionsInfo,
-  [ReducersEnum.transactions]: transactions
+  [ReducersEnum.transactions]: transactions,
+  [ReducersEnum.batchTransactions]: batchTransactions
 };
 
 const getRootReducer = (customReducers = {}) =>

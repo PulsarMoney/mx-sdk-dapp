@@ -1,6 +1,13 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import classNames from 'classnames';
 import { createPortal } from 'react-dom';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
 import { useGetSignedTransactions } from 'hooks/transactions/useGetSignedTransactions';
 import { useDispatch, useSelector } from 'reduxStore/DappProviderContext';
 import {
@@ -10,10 +17,18 @@ import {
 import { addTransactionToast, removeTransactionToast } from 'reduxStore/slices';
 import { store } from 'reduxStore/store';
 import { removeSignedTransaction } from 'services';
-import { SignedTransactionsBodyType, SignedTransactionsType } from 'types';
+import {
+  SignedTransactionsBodyType,
+  SignedTransactionsType,
+  TransactionBatchStatusesEnum
+} from 'types';
 import { TransactionToastType } from 'types/toasts.types';
 
-import { deleteCustomToast } from 'utils/toasts/customToastsActions';
+import {
+  deleteCustomToast,
+  getRegisteredCustomIconComponents,
+  getRegisteredToastCloseHandler
+} from 'utils/toasts/customToastsActions';
 import { getIsTransactionPending } from 'utils/transactions/transactionStateByStatus';
 
 import { WithClassnameType } from '../types';
@@ -22,7 +37,6 @@ import {
   TransactionToastGuard,
   TransactionToastGuardPropsType
 } from './components';
-import styles from './transactionsToastList.styles.scss';
 
 export interface TransactionsToastListPropsType extends WithClassnameType {
   toastProps?: any;
@@ -32,16 +46,20 @@ export interface TransactionsToastListPropsType extends WithClassnameType {
   parentElement?: Element | DocumentFragment;
   transactionToastClassName?: string;
   customToastClassName?: string;
+  children?: React.ReactNode;
 }
 
-export const TransactionsToastList = ({
+export const TransactionsToastListComponent = ({
   className = 'transactions-toast-list',
   transactionToastClassName,
   customToastClassName,
   signedTransactions,
   successfulToastLifetime,
-  parentElement
-}: TransactionsToastListPropsType) => {
+  parentElement,
+  children,
+  styles
+}: TransactionsToastListPropsType & WithStylesImportType) => {
+  const [isBrowser, setIsBrowser] = useState(false);
   const customToasts = useSelector(customToastsSelector);
   const transactionsToasts = useSelector(transactionToastsSelector);
   const dispatch = useDispatch();
@@ -67,21 +85,30 @@ export const TransactionsToastList = ({
     removeSignedTransaction(toastId);
   };
 
-  const handleSignedTransactionsListUpdate = () => {
+  const handleSignedTransactionsListUpdate = useCallback(() => {
     for (const sessionId in signedTransactionsToRender) {
-      const alreadyHasToastForThisTransaction = transactionsToasts.some(
-        (toast: TransactionToastType): boolean => toast.toastId === sessionId
+      const session = signedTransactionsToRender[sessionId];
+      const skipSending =
+        session?.customTransactionInformation?.signWithoutSending;
+
+      if (skipSending) {
+        continue;
+      }
+
+      const alreadyHasToastForThisSession = transactionsToasts.some(
+        (toast: TransactionToastType): boolean =>
+          `${toast.toastId}` === `${sessionId}`
       );
 
-      if (!alreadyHasToastForThisTransaction) {
+      if (!alreadyHasToastForThisSession) {
         dispatch(addTransactionToast(sessionId));
       }
     }
-  };
+  }, [dispatch, signedTransactionsToRender, transactionsToasts]);
 
   useEffect(() => {
     handleSignedTransactionsListUpdate();
-  }, [signedTransactionsToRender]);
+  }, [signedTransactionsToRender, handleSignedTransactionsListUpdate]);
 
   const MemoizedTransactionsToastsList = useMemo(
     () =>
@@ -108,18 +135,29 @@ export const TransactionsToastList = ({
       transactionsToasts,
       signedTransactionsToRender,
       successfulToastLifetime,
-      handleDeleteTransactionToast
+      handleDeleteTransactionToast,
+      transactionToastClassName
     ]
   );
 
-  const customToastsList = customToasts.map((props) => (
-    <CustomToast
-      key={props.toastId}
-      {...props}
-      onDelete={() => handleDeleteCustomToast(props.toastId)}
-      className={customToastClassName}
-    />
-  ));
+  const customToastsList = customToasts.map((props) => {
+    const CustomComponent =
+      getRegisteredCustomIconComponents(props.toastId) ?? null;
+    const onCloseHandler = getRegisteredToastCloseHandler(props.toastId);
+
+    return (
+      <CustomToast
+        key={props.toastId}
+        {...props}
+        component={CustomComponent as never}
+        onDelete={() => {
+          handleDeleteCustomToast(props.toastId);
+          onCloseHandler?.();
+        }}
+        className={customToastClassName}
+      />
+    );
+  });
 
   const clearNotPendingTransactionsFromStorage = () => {
     const toasts = transactionToastsSelector(store.getState());
@@ -134,14 +172,17 @@ export const TransactionsToastList = ({
 
       const { status } = currentTx;
       const isPending = getIsTransactionPending(status);
+      const isSigned = status === TransactionBatchStatusesEnum.signed;
 
-      if (!isPending) {
+      if (!isPending && !isSigned) {
         handleDeleteTransactionToast(transactionToast.toastId);
       }
     });
   };
 
   useEffect(() => {
+    setIsBrowser(true);
+
     window?.addEventListener(
       'beforeunload',
       clearNotPendingTransactionsFromStorage
@@ -155,11 +196,28 @@ export const TransactionsToastList = ({
     };
   }, []);
 
-  return createPortal(
-    <div className={classNames(styles.toasts, className)}>
-      {customToastsList}
-      {MemoizedTransactionsToastsList}
-    </div>,
-    parentElement || document?.body
+  return (
+    <>
+      {isBrowser &&
+        createPortal(
+          <div className={classNames(styles?.toasts, className)}>
+            {customToastsList}
+            {MemoizedTransactionsToastsList}
+            {children}
+          </div>,
+          parentElement || document?.body
+        )}
+    </>
   );
 };
+
+export const TransactionsToastList = withStyles(
+  TransactionsToastListComponent,
+  {
+    ssrStyles: () =>
+      import('UI/TransactionsToastList/transactionsToastList.styles.scss'),
+    clientStyles: () =>
+      require('UI/TransactionsToastList/transactionsToastList.styles.scss')
+        .default
+  }
+);

@@ -1,36 +1,35 @@
 import React from 'react';
 import classNames from 'classnames';
-
-import globalStyles from 'assets/sass/main.scss';
+import { DataTestIdsEnum } from 'constants/index';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
 import { TransactionDirectionEnum } from 'types/serverTransactions.types';
 import { ExplorerLink } from 'UI/ExplorerLink';
-
-import { WithTransactionType } from '../../../UI/types';
+import { WithTransactionType } from 'UI/types';
 import { AccountName } from './AccountName';
 import { LockedTokenAddressIcon } from './LockedTokenAddressIcon';
 import { ScAddressIcon } from './ScAddressIcon';
-
-import styles from './transactionsTable.styles.scss';
 
 export interface TransactionReceiverPropsType extends WithTransactionType {
   showLockedAccounts?: boolean;
 }
 
-export const TransactionReceiver = ({
+const TransactionReceiverComponent = ({
   transaction,
-  showLockedAccounts
-}: TransactionReceiverPropsType) => {
+  showLockedAccounts,
+  globalStyles,
+  styles
+}: TransactionReceiverPropsType & WithStylesImportType) => {
   const directionIn =
     transaction.transactionDetails.direction === TransactionDirectionEnum.IN;
 
   return (
     <div
       className={classNames(
-        globalStyles.dFlex,
-        globalStyles.alignItemsCenter,
-        styles.transactionCell
+        globalStyles?.dFlex,
+        globalStyles?.alignItemsCenter,
+        styles?.transactionCell
       )}
-      data-testid='transactionReceiver'
+      data-testid={DataTestIdsEnum.transactionReceiver}
     >
       {showLockedAccounts && (
         <LockedTokenAddressIcon
@@ -44,9 +43,9 @@ export const TransactionReceiver = ({
       {directionIn ? (
         <div
           className={classNames(
-            globalStyles.w100,
-            styles.transactionCellMargin,
-            styles.transactionCellOverflow
+            globalStyles?.w100,
+            styles?.transactionCellMargin,
+            styles?.transactionCellOverflow
           )}
         >
           <AccountName
@@ -57,12 +56,12 @@ export const TransactionReceiver = ({
       ) : (
         <ExplorerLink
           page={transaction.links.receiverLink ?? ''}
-          data-testid='receiverLink'
+          data-testid={DataTestIdsEnum.receiverLink}
           className={classNames(
-            globalStyles.w100,
-            styles.transactionCellMargin,
-            styles.transactionCellOverflow,
-            styles.transactionCellLink
+            globalStyles?.w100,
+            styles?.transactionCellMargin,
+            styles?.transactionCellOverflow,
+            styles?.transactionCellLink
           )}
         >
           <AccountName
@@ -74,3 +73,11 @@ export const TransactionReceiver = ({
     </div>
   );
 };
+
+export const TransactionReceiver = withStyles(TransactionReceiverComponent, {
+  ssrStyles: () =>
+    import('UI/TransactionsTable/components/transactionsTable.styles.scss'),
+  clientStyles: () =>
+    require('UI/TransactionsTable/components/transactionsTable.styles.scss')
+      .default
+});

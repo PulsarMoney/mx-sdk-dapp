@@ -1,12 +1,10 @@
 import React, { ReactNode } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
-
-import globalStyles from 'assets/sass/main.scss';
+import { DataTestIdsEnum } from 'constants/index';
+import { withStyles, WithStylesImportType } from 'hocs/withStyles';
 import { SignedTransactionType } from 'types';
 import { TransactionDetails } from 'UI/TransactionDetails';
-
-import styles from '../transactionToast.styles.scss';
 import { TransactionToastContentElementsProps } from '../transactionToast.type';
 import { ToastDataState } from '../utils';
 import { DefaultToastDeleteButton } from './DefaultToastDeleteButton';
@@ -22,8 +20,7 @@ export interface TransactionToastContentProps {
   isTimedOut?: boolean;
   customElements?: TransactionToastContentElementsProps;
 }
-
-export const TransactionToastContent = ({
+const TransactionToastContentComponent = ({
   style,
   toastDataState,
   transactions,
@@ -35,14 +32,19 @@ export const TransactionToastContent = ({
     CustomCloseButton: DefaultToastDeleteButton,
     TransactionToastStatusIcon: FontAwesomeIcon,
     TransactionDetails: TransactionDetails
-  }
-}: TransactionToastContentProps) => {
+  },
+  globalStyles,
+  styles
+}: TransactionToastContentProps & WithStylesImportType) => {
   const TransactionDetails = customElements?.TransactionDetails;
   const TransactionToastStatusIcon = customElements?.TransactionToastStatusIcon;
   const CustomCloseButton = customElements?.CustomCloseButton;
 
   return (
-    <div className={style.content}>
+    <div
+      className={style.content}
+      data-testid={DataTestIdsEnum.transactionToastContent}
+    >
       <div className={style.left}>
         <div className={classNames(style.icon, toastDataState.iconClassName)}>
           {TransactionToastStatusIcon && (
@@ -57,13 +59,16 @@ export const TransactionToastContent = ({
 
       <div className={style.right}>
         <div className={style.heading}>
-          <h5 className={classNames([globalStyles.h5, style.mb4])}>
+          <h5
+            className={classNames([globalStyles?.h5, style.mb4])}
+            data-testid={DataTestIdsEnum.transactionToastTitle}
+          >
             {toastDataState.title}
           </h5>
 
           {showCloseButton && CustomCloseButton && (
             <CustomCloseButton
-              className={styles.close}
+              className={styles?.close}
               onClick={onDeleteToast}
             />
           )}
@@ -82,3 +87,16 @@ export const TransactionToastContent = ({
     </div>
   );
 };
+
+export const TransactionToastContent = withStyles(
+  TransactionToastContentComponent,
+  {
+    ssrStyles: () =>
+      import(
+        'UI/TransactionsToastList/components/TransactionToast/transactionToast.styles.scss'
+      ),
+    clientStyles: () =>
+      require('UI/TransactionsToastList/components/TransactionToast/transactionToast.styles.scss')
+        .default
+  }
+);

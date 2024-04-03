@@ -1,6 +1,7 @@
 import { Transaction } from '@multiversx/sdk-core';
 import { loginWithNativeAuthToken } from 'services/nativeAuth/helpers/loginWithNativeAuthToken';
 import { PlatformsEnum, WebViewProviderResponseEnums } from 'types/index';
+import { isWindowAvailable } from 'utils/isWindowAvailable';
 import { detectCurrentPlatform } from 'utils/platform/detectCurrentPlatform';
 import { setExternalProviderAsAccountProvider } from '../accountProvider';
 import { requestMethods } from './requestMethods';
@@ -10,14 +11,17 @@ const notInitializedError = (caller: string) => () => {
 };
 
 const currentPlatform = detectCurrentPlatform();
-export const targetOrigin =
-  typeof window != 'undefined' ? window?.parent?.origin ?? '*' : '*';
+export const getTargetOrigin = () => {
+  return isWindowAvailable() ? window?.parent?.origin ?? '*' : '*';
+};
+
+const messageType = 'message';
 
 const handleWaitForMessage = (cb: (eventData: any) => void) => {
   const handleMessageReceived = (event: any) => {
     let eventData = event.data;
     if (
-      event.target.origin != targetOrigin &&
+      event.target.origin != getTargetOrigin() &&
       currentPlatform != PlatformsEnum.reactNative
     ) {
       return;
@@ -29,8 +33,12 @@ const handleWaitForMessage = (cb: (eventData: any) => void) => {
       console.error('error parsing response');
     }
   };
-  document.addEventListener('message', handleMessageReceived);
-  window.addEventListener('message', handleMessageReceived);
+  if (document) {
+    document.addEventListener(messageType, handleMessageReceived);
+  }
+  if (window) {
+    window.addEventListener(messageType, handleMessageReceived);
+  }
 };
 
 export const webviewProvider: any = {
@@ -63,7 +71,9 @@ export const webviewProvider: any = {
                 reject('Unable to login');
               }
             }
-            document.removeEventListener('message', handleTokenReceived);
+            if (document) {
+              document.removeEventListener(messageType, handleTokenReceived);
+            }
           }
           handleWaitForMessage(handleTokenReceived);
         }
@@ -84,7 +94,57 @@ export const webviewProvider: any = {
   isInitialized: () => true,
   isConnected: async () => true,
   sendTransaction: notInitializedError('sendTransaction'),
-  signMessage: notInitializedError('signMessage'),
+  sendCustomRequest: async (payload: {
+    request: { method: string; params: any };
+  }) => {
+    requestMethods.sendCustomRequest[currentPlatform](payload);
+  },
+  signMessage: async (message: string) => {
+    try {
+      requestMethods.signMessage[currentPlatform](message);
+      const waitForSignedMessageResponse: Promise<string> = new Promise(
+        (resolve, reject) => {
+          (window as any).signMessageResponse = (
+            signedMessage: string,
+            error: string
+          ) => {
+            if (error) {
+              reject(error);
+              (window as any).signMessageResponse = null;
+              return;
+            }
+            resolve(signedMessage);
+            (window as any).signMessageResponse = null;
+          };
+
+          function handleSignMessageResponse(eventData: any) {
+            const { message, type } = eventData;
+            if (
+              type === WebViewProviderResponseEnums.signMessageResponse &&
+              message != null
+            ) {
+              const { signedMessage, error } = message;
+
+              if (!error) {
+                resolve(signedMessage);
+              } else {
+                reject(error);
+              }
+            }
+            document?.removeEventListener(
+              messageType,
+              handleSignMessageResponse
+            );
+          }
+          handleWaitForMessage(handleSignMessageResponse);
+        }
+      );
+      return await waitForSignedMessageResponse;
+    } catch (err) {
+      console.error('error sending transaction', err);
+      throw err;
+    }
+  },
   signTransactions: async (transactions: Transaction[]) => {
     try {
       const plainTransactions = transactions.map((tx) => tx.toPlainObject());
@@ -102,7 +162,7 @@ export const webviewProvider: any = {
             (window as any).transactionsSigned = null;
           };
 
-          function handleSignResponse(eventData: any) {
+          function handleSignTransactionResponse(eventData: any) {
             const { message, type } = eventData;
             if (
               type === WebViewProviderResponseEnums.signTransactionsResponse
@@ -123,9 +183,14 @@ export const webviewProvider: any = {
                 reject('Unable to sign');
               }
             }
-            document.removeEventListener('message', handleSignResponse);
+            if (document) {
+              document.removeEventListener(
+                messageType,
+                handleSignTransactionResponse
+              );
+            }
           }
-          handleWaitForMessage(handleSignResponse);
+          handleWaitForMessage(handleSignTransactionResponse);
         });
       return await waitForSignedTransactionsResponse;
     } catch (err) {
