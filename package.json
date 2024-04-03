@@ -1,5 +1,5 @@
 {
-  "name": "@multiversx/sdk-dapp",
+  "name": "@pulsar.money/sdk-dapp",
   "version": "2.28.8",
   "description": "A library to hold the main logic for a dapp on the MultiversX blockchain",
   "author": "MultiversX",
@@ -152,8 +152,10 @@
     "@multiversx/sdk-web-wallet-cross-window-provider": "0.0.14",
     "@multiversx/sdk-web-wallet-provider": "3.2.1",
     "@reduxjs/toolkit": "1.8.2",
+    "@types/js-cookie": "^3.0.6",
     "axios": "1.6.5",
     "bignumber.js": "9.x",
+    "js-cookie": "^3.0.5",
     "linkify-react": "4.0.2",
     "linkifyjs": "4.0.2",
     "lodash.debounce": "4.0.8",

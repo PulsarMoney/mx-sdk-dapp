@@ -7,6 +7,7 @@ import { setTokenLogin } from 'reduxStore/slices';
 import { nativeAuth } from 'services/nativeAuth';
 import { getNativeAuthConfig } from 'services/nativeAuth/methods';
 import { NativeAuthConfigType, OnProviderLoginType } from 'types';
+import Cookies from 'js-cookie';
 
 const getApiAddress = (
   apiAddress: string,
@@ -87,6 +88,8 @@ export const useLoginService = (config?: OnProviderLoginType['nativeAuth']) => {
       token: loginToken,
       signature
     });
+
+    Cookies.set('Authorization', nativeAuthToken);
 
     dispatch(
       setTokenLogin({

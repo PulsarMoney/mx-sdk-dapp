@@ -8,6 +8,7 @@ import { preventRedirects, safeRedirect } from './redirect';
 import { storage } from './storage';
 import { localStorageKeys } from './storage/local';
 import { addOriginToLocationPath, getWindowLocation } from './window';
+import Cookies from 'js-cookie';
 
 interface RedirectToCallbackUrlParamsType {
   callbackUrl?: string;
@@ -86,6 +87,8 @@ export async function logout(
       onRedirect
     });
   }
+  store.dispatch(logoutAction());
+  Cookies.remove('Authorization');
 
   try {
     store.dispatch(logoutAction());
